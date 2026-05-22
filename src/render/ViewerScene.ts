@@ -1,6 +1,7 @@
 import * as THREE from "three";
 
 type TriangleBuffer = Float32Array<ArrayBufferLike>;
+const MOVEMENT_RAMP_SECONDS = 0.5;
 
 export interface TriangleLayer {
   colors: TriangleBuffer;
@@ -28,6 +29,7 @@ export class ViewerScene {
   private readonly content = new THREE.Group();
   private readonly placeholder: THREE.Mesh;
   private readonly pressedKeys = new Set<string>();
+  private readonly keyPressStartTimes = new Map<string, number>();
   private readonly lookEuler = new THREE.Euler(0, 0, 0, "YXZ");
   private readonly moveVector = new THREE.Vector3();
   private readonly forwardVector = new THREE.Vector3();
@@ -277,17 +279,22 @@ export class ViewerScene {
     }
 
     this.pressedKeys.add(event.code);
+    if (!this.keyPressStartTimes.has(event.code)) {
+      this.keyPressStartTimes.set(event.code, performance.now());
+    }
     event.preventDefault();
   };
 
   private handleKeyUp = (event: KeyboardEvent): void => {
     if (isMovementKey(event.code)) {
       this.pressedKeys.delete(event.code);
+      this.keyPressStartTimes.delete(event.code);
     }
   };
 
   private handleBlur = (): void => {
     this.pressedKeys.clear();
+    this.keyPressStartTimes.clear();
     if (document.pointerLockElement !== this.renderer.domElement) {
       this.isMouseLooking = false;
     }
@@ -308,7 +315,7 @@ export class ViewerScene {
     this.camera.quaternion.setFromEuler(this.lookEuler);
   }
 
-  private updateFreeFly(deltaSeconds: number): void {
+  private updateFreeFly(deltaSeconds: number, now: number): void {
     if (this.pressedKeys.size === 0) {
       return;
     }
@@ -318,34 +325,56 @@ export class ViewerScene {
     this.rightVector.crossVectors(this.forwardVector, this.upVector).normalize();
 
     if (this.pressedKeys.has("KeyW")) {
-      this.moveVector.add(this.forwardVector);
+      this.moveVector.addScaledVector(this.forwardVector, this.movementRampForKey("KeyW", now));
     }
     if (this.pressedKeys.has("KeyS")) {
-      this.moveVector.sub(this.forwardVector);
+      this.moveVector.addScaledVector(this.forwardVector, -this.movementRampForKey("KeyS", now));
     }
     if (this.pressedKeys.has("KeyD")) {
-      this.moveVector.add(this.rightVector);
+      this.moveVector.addScaledVector(this.rightVector, this.movementRampForKey("KeyD", now));
     }
     if (this.pressedKeys.has("KeyA")) {
-      this.moveVector.sub(this.rightVector);
+      this.moveVector.addScaledVector(this.rightVector, -this.movementRampForKey("KeyA", now));
     }
     if (this.pressedKeys.has("Space") || this.pressedKeys.has("KeyE")) {
-      this.moveVector.add(this.upVector);
+      this.moveVector.addScaledVector(this.upVector, this.largestMovementRamp(["Space", "KeyE"], now));
     }
     if (this.pressedKeys.has("ControlLeft") || this.pressedKeys.has("ControlRight") || this.pressedKeys.has("KeyQ")) {
-      this.moveVector.sub(this.upVector);
+      this.moveVector.addScaledVector(
+        this.upVector,
+        -this.largestMovementRamp(["ControlLeft", "ControlRight", "KeyQ"], now)
+      );
     }
 
     if (this.moveVector.lengthSq() === 0) {
       return;
     }
 
+    if (this.moveVector.lengthSq() > 1) {
+      this.moveVector.normalize();
+    }
+
     const speedMultiplier =
       this.pressedKeys.has("ShiftLeft") || this.pressedKeys.has("ShiftRight") ? 3 : 1;
     this.camera.position.addScaledVector(
-      this.moveVector.normalize(),
+      this.moveVector,
       this.movementSpeed * speedMultiplier * deltaSeconds
     );
+  }
+
+  private movementRampForKey(code: string, now: number): number {
+    const startTime = this.keyPressStartTimes.get(code);
+
+    if (startTime === undefined) {
+      return 0;
+    }
+
+    const progress = THREE.MathUtils.clamp((now - startTime) / 1000 / MOVEMENT_RAMP_SECONDS, 0, 1);
+    return progress * progress * (3 - 2 * progress);
+  }
+
+  private largestMovementRamp(codes: string[], now: number): number {
+    return codes.reduce((largest, code) => Math.max(largest, this.movementRampForKey(code, now)), 0);
   }
 
   private disposeObject(object: THREE.Object3D): void {
@@ -420,7 +449,7 @@ export class ViewerScene {
       this.placeholder.rotation.y += 0.004;
     }
 
-    this.updateFreeFly(deltaSeconds);
+    this.updateFreeFly(deltaSeconds, now);
     this.renderer.render(this.scene, this.camera);
   };
 }
