@@ -1,7 +1,7 @@
 import * as THREE from "three";
 
 type TriangleBuffer = Float32Array<ArrayBufferLike>;
-const MOVEMENT_RAMP_SECONDS = 0.5;
+const MOVEMENT_RAMP_SECONDS = 1;
 
 export interface TriangleLayer {
   colors: TriangleBuffer;
