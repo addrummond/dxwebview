@@ -1,19 +1,29 @@
 import { BinaryReader } from "./binaryReader";
 import type { UnrealExportEntry, UnrealImportEntry, UnrealPackageTables } from "./packageTables";
 
-export interface UnrealPointCloud {
+export interface UnrealModelGeometry {
   sourceExport: string;
   points: Float32Array;
+  triangles: Float32Array;
 }
 
 interface ModelCandidate extends UnrealExportEntry {
   className: string;
 }
 
-export function readLargestModelPointCloud(
+interface BspNode {
+  vertexPoolIndex: number;
+  vertexCount: number;
+}
+
+interface BspVert {
+  pointIndex: number;
+}
+
+export function readLargestModelGeometry(
   buffer: ArrayBuffer,
   tables: UnrealPackageTables
-): UnrealPointCloud | null {
+): UnrealModelGeometry | null {
   const model = tables.exports
     .map((entry) => ({ ...entry, className: resolveObjectName(entry.classIndex, tables) }))
     .filter((entry): entry is ModelCandidate => entry.className === "Model")
@@ -35,6 +45,24 @@ export function readLargestModelPointCloud(
   // UModel serializes FBox + FSphere before its model arrays in UE1.
   reader.skip(41);
   skipVectorArray(reader);
+  const points = readPointArray(reader);
+  const nodes = readBspNodes(reader);
+  const verts = readBspVerts(reader);
+  const triangles = triangulateNodes(points, nodes, verts);
+
+  return {
+    sourceExport: model.objectName,
+    points,
+    triangles
+  };
+}
+
+function skipVectorArray(reader: BinaryReader): void {
+  const count = reader.readCompactIndex();
+  reader.skip(count * 12);
+}
+
+function readPointArray(reader: BinaryReader): Float32Array {
   const pointCount = reader.readCompactIndex();
   const points = new Float32Array(pointCount * 3);
 
@@ -42,22 +70,80 @@ export function readLargestModelPointCloud(
     const x = reader.readFloat32();
     const y = reader.readFloat32();
     const z = reader.readFloat32();
-    const target = index * 3;
-
-    points[target] = x;
-    points[target + 1] = z;
-    points[target + 2] = -y;
+    writePoint(points, index, x, y, z);
   }
 
-  return {
-    sourceExport: model.objectName,
-    points
-  };
+  return points;
 }
 
-function skipVectorArray(reader: BinaryReader): void {
-  const count = reader.readCompactIndex();
-  reader.skip(count * 12);
+function readBspNodes(reader: BinaryReader): BspNode[] {
+  const nodeCount = reader.readCompactIndex();
+  const nodes: BspNode[] = [];
+
+  for (let index = 0; index < nodeCount; index += 1) {
+    reader.skip(24);
+    const vertexPoolIndex = reader.readInt32();
+    reader.skip(26);
+    const vertexCount = reader.readUint8();
+    reader.skip(9);
+    nodes.push({ vertexPoolIndex, vertexCount });
+  }
+
+  return nodes;
+}
+
+function readBspVerts(reader: BinaryReader): BspVert[] {
+  const vertCount = reader.readCompactIndex();
+  const verts: BspVert[] = [];
+
+  for (let index = 0; index < vertCount; index += 1) {
+    verts.push({
+      pointIndex: reader.readCompactIndex()
+    });
+    reader.readCompactIndex();
+  }
+
+  return verts;
+}
+
+function triangulateNodes(points: Float32Array, nodes: BspNode[], verts: BspVert[]): Float32Array {
+  const positions: number[] = [];
+  const pointCount = points.length / 3;
+
+  for (const node of nodes) {
+    if (node.vertexCount < 3 || node.vertexCount > 64 || node.vertexPoolIndex < 0) {
+      continue;
+    }
+
+    const polygon = verts
+      .slice(node.vertexPoolIndex, node.vertexPoolIndex + node.vertexCount)
+      .map((vert) => vert.pointIndex)
+      .filter((pointIndex) => pointIndex >= 0 && pointIndex < pointCount);
+
+    if (polygon.length < 3) {
+      continue;
+    }
+
+    for (let index = 1; index < polygon.length - 1; index += 1) {
+      pushPoint(positions, points, polygon[0]);
+      pushPoint(positions, points, polygon[index]);
+      pushPoint(positions, points, polygon[index + 1]);
+    }
+  }
+
+  return new Float32Array(positions);
+}
+
+function writePoint(points: Float32Array, index: number, x: number, y: number, z: number): void {
+  const target = index * 3;
+  points[target] = x;
+  points[target + 1] = z;
+  points[target + 2] = -y;
+}
+
+function pushPoint(positions: number[], points: Float32Array, pointIndex: number): void {
+  const source = pointIndex * 3;
+  positions.push(points[source], points[source + 1], points[source + 2]);
 }
 
 function resolveObjectName(index: number, tables: UnrealPackageTables): string {

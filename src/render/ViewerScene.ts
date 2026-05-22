@@ -51,6 +51,34 @@ export class ViewerScene {
     this.frameObject(cloud);
   }
 
+  showTriangles(triangles: Float32Array): void {
+    this.clearContent();
+    this.placeholder.visible = false;
+
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute("position", new THREE.BufferAttribute(triangles, 3));
+    geometry.computeVertexNormals();
+    geometry.computeBoundingSphere();
+
+    const material = new THREE.MeshStandardMaterial({
+      color: 0x9fc3cf,
+      metalness: 0,
+      roughness: 0.9,
+      side: THREE.DoubleSide
+    });
+    const mesh = new THREE.Mesh(geometry, material);
+
+    const wireGeometry = geometry.clone();
+    const wireMaterial = new THREE.MeshBasicMaterial({
+      color: 0x263238,
+      wireframe: true
+    });
+    const wire = new THREE.Mesh(wireGeometry, wireMaterial);
+
+    this.content.add(mesh, wire);
+    this.frameObject(mesh);
+  }
+
   showPlaceholder(): void {
     this.clearContent();
     this.placeholder.visible = true;

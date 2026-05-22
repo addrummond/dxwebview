@@ -137,10 +137,15 @@ async function selectMap(entry: IndexedPackage): Promise<void> {
 
   try {
     state.selectedMap = await readIndexedPackageSummary(entry);
-    if (state.selectedMap.pointCloud) {
-      viewerScene.showPointCloud(state.selectedMap.pointCloud.points);
+    if (state.selectedMap.geometry && state.selectedMap.geometry.triangles.length > 0) {
+      viewerScene.showTriangles(state.selectedMap.geometry.triangles);
       setStatus(
-        `Loaded ${state.selectedMap.pointCloud.points.length / 3} points from ${state.selectedMap.pointCloud.sourceExport}.`
+        `Rendered ${state.selectedMap.geometry.triangles.length / 9} triangles from ${state.selectedMap.geometry.sourceExport}.`
+      );
+    } else if (state.selectedMap.geometry) {
+      viewerScene.showPointCloud(state.selectedMap.geometry.points);
+      setStatus(
+        `Loaded ${state.selectedMap.geometry.points.length / 3} points from ${state.selectedMap.geometry.sourceExport}.`
       );
     } else {
       viewerScene.showPlaceholder();
@@ -246,7 +251,7 @@ function renderInspector(): void {
   const sampleExports = exports
     .slice(0, 8)
     .map((entry) => `${entry.objectName} (${formatBytes(entry.serialSize)})`);
-  const pointCloud = selected.pointCloud;
+  const geometry = selected.geometry;
 
   inspectorContentElement.innerHTML = `
     <dl class="stats inspector-stats">
@@ -260,8 +265,12 @@ function renderInspector(): void {
       <div><dt>Exports</dt><dd>${summary.exportCount}</dd></div>
       <div><dt>Export Table</dt><dd>@ ${summary.exportOffset}</dd></div>
       <div><dt>Flags</dt><dd>0x${summary.packageFlags.toString(16).padStart(8, "0")}</dd></div>
-      <div><dt>Point Cloud</dt><dd>${
-        pointCloud ? `${pointCloud.points.length / 3} points from ${escapeHtml(pointCloud.sourceExport)}` : "None"
+      <div><dt>Geometry</dt><dd>${
+        geometry
+          ? `${geometry.triangles.length / 9} triangles, ${geometry.points.length / 3} points from ${escapeHtml(
+              geometry.sourceExport
+            )}`
+          : "None"
       }</dd></div>
     </dl>
     ${renderListSection("Names", sampleNames)}

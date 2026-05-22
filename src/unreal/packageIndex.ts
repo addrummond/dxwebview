@@ -1,5 +1,5 @@
 import { readPackageTables, type UnrealPackageTables } from "./packageTables";
-import { readLargestModelPointCloud, type UnrealPointCloud } from "./modelPoints";
+import { readLargestModelGeometry, type UnrealModelGeometry } from "./modelPoints";
 
 export const KNOWN_PACKAGE_FOLDERS = ["Maps", "Textures", "System", "Sounds", "Music"] as const;
 
@@ -25,7 +25,7 @@ export interface PackageIndex {
 
 export interface IndexedPackageWithSummary extends IndexedPackage {
   tables: UnrealPackageTables;
-  pointCloud: UnrealPointCloud | null;
+  geometry: UnrealModelGeometry | null;
 }
 
 export function isUnrealPackageFile(fileName: string): boolean {
@@ -100,7 +100,7 @@ export async function readIndexedPackageSummary(
   return {
     ...entry,
     tables,
-    pointCloud: readLargestModelPointCloud(buffer, tables)
+    geometry: readLargestModelGeometry(buffer, tables)
   };
 }
 
