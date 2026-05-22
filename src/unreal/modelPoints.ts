@@ -5,6 +5,9 @@ export interface UnrealModelGeometry {
   sourceExport: string;
   points: Float32Array;
   triangles: Float32Array;
+  backdropTriangles: Float32Array;
+  invisibleTriangles: Float32Array;
+  surfaceCount: number;
 }
 
 interface ModelCandidate extends UnrealExportEntry {
@@ -13,12 +16,20 @@ interface ModelCandidate extends UnrealExportEntry {
 
 interface BspNode {
   vertexPoolIndex: number;
+  surfaceIndex: number;
   vertexCount: number;
+}
+
+interface BspSurface {
+  polyFlags: number;
 }
 
 interface BspVert {
   pointIndex: number;
 }
+
+const POLY_FLAG_INVISIBLE = 0x00000001;
+const POLY_FLAG_FAKE_BACKDROP = 0x00000080;
 
 export function readLargestModelGeometry(
   buffer: ArrayBuffer,
@@ -47,14 +58,17 @@ export function readLargestModelGeometry(
   skipVectorArray(reader);
   const points = readPointArray(reader);
   const nodes = readBspNodes(reader);
-  skipBspSurfaces(reader);
+  const surfaces = readBspSurfaces(reader);
   const verts = readBspVerts(reader);
-  const triangles = triangulateNodes(points, nodes, verts);
+  const triangles = triangulateNodes(points, nodes, surfaces, verts);
 
   return {
     sourceExport: model.objectName,
     points,
-    triangles
+    triangles: triangles.solid,
+    backdropTriangles: triangles.backdrop,
+    invisibleTriangles: triangles.invisible,
+    surfaceCount: surfaces.length
   };
 }
 
@@ -86,7 +100,7 @@ function readBspNodes(reader: BinaryReader): BspNode[] {
     reader.skip(8);
     reader.readUint8();
     const vertexPoolIndex = reader.readCompactIndex();
-    reader.readCompactIndex();
+    const surfaceIndex = reader.readCompactIndex();
     reader.readCompactIndex();
     reader.readCompactIndex();
     reader.readCompactIndex();
@@ -96,18 +110,19 @@ function readBspNodes(reader: BinaryReader): BspNode[] {
     reader.readCompactIndex();
     const vertexCount = reader.readUint8();
     reader.skip(8);
-    nodes.push({ vertexPoolIndex, vertexCount });
+    nodes.push({ vertexPoolIndex, surfaceIndex, vertexCount });
   }
 
   return nodes;
 }
 
-function skipBspSurfaces(reader: BinaryReader): void {
+function readBspSurfaces(reader: BinaryReader): BspSurface[] {
   const surfaceCount = reader.readCompactIndex();
+  const surfaces: BspSurface[] = [];
 
   for (let index = 0; index < surfaceCount; index += 1) {
     reader.readCompactIndex();
-    reader.readUint32();
+    const polyFlags = reader.readUint32();
     reader.readCompactIndex();
     reader.readCompactIndex();
     reader.readCompactIndex();
@@ -116,7 +131,10 @@ function skipBspSurfaces(reader: BinaryReader): void {
     reader.readCompactIndex();
     reader.skip(4);
     reader.readCompactIndex();
+    surfaces.push({ polyFlags });
   }
+
+  return surfaces;
 }
 
 function readBspVerts(reader: BinaryReader): BspVert[] {
@@ -133,8 +151,15 @@ function readBspVerts(reader: BinaryReader): BspVert[] {
   return verts;
 }
 
-function triangulateNodes(points: Float32Array, nodes: BspNode[], verts: BspVert[]): Float32Array {
-  const positions: number[] = [];
+function triangulateNodes(
+  points: Float32Array,
+  nodes: BspNode[],
+  surfaces: BspSurface[],
+  verts: BspVert[]
+): { backdrop: Float32Array; invisible: Float32Array; solid: Float32Array } {
+  const solid: number[] = [];
+  const backdrop: number[] = [];
+  const invisible: number[] = [];
   const pointCount = points.length / 3;
 
   for (const node of nodes) {
@@ -151,14 +176,39 @@ function triangulateNodes(points: Float32Array, nodes: BspNode[], verts: BspVert
       continue;
     }
 
+    const target = triangleTargetForSurface(surfaces[node.surfaceIndex], solid, backdrop, invisible);
+
     for (let index = 1; index < polygon.length - 1; index += 1) {
-      pushPoint(positions, points, polygon[0]);
-      pushPoint(positions, points, polygon[index]);
-      pushPoint(positions, points, polygon[index + 1]);
+      pushPoint(target, points, polygon[0]);
+      pushPoint(target, points, polygon[index]);
+      pushPoint(target, points, polygon[index + 1]);
     }
   }
 
-  return new Float32Array(positions);
+  return {
+    backdrop: new Float32Array(backdrop),
+    invisible: new Float32Array(invisible),
+    solid: new Float32Array(solid)
+  };
+}
+
+function triangleTargetForSurface(
+  surface: BspSurface | undefined,
+  solid: number[],
+  backdrop: number[],
+  invisible: number[]
+): number[] {
+  const flags = surface?.polyFlags ?? 0;
+
+  if ((flags & POLY_FLAG_INVISIBLE) !== 0) {
+    return invisible;
+  }
+
+  if ((flags & POLY_FLAG_FAKE_BACKDROP) !== 0) {
+    return backdrop;
+  }
+
+  return solid;
 }
 
 function writePoint(points: Float32Array, index: number, x: number, y: number, z: number): void {

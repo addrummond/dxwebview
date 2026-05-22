@@ -1,5 +1,7 @@
 import * as THREE from "three";
 
+type TriangleBuffer = Float32Array<ArrayBufferLike>;
+
 export class ViewerScene {
   private readonly renderer: THREE.WebGLRenderer;
   private readonly scene: THREE.Scene;
@@ -33,7 +35,7 @@ export class ViewerScene {
     this.animate();
   }
 
-  showPointCloud(points: Float32Array): void {
+  showPointCloud(points: TriangleBuffer): void {
     this.clearContent();
     this.placeholder.visible = false;
 
@@ -51,31 +53,20 @@ export class ViewerScene {
     this.frameObject(cloud);
   }
 
-  showTriangles(triangles: Float32Array): void {
+  showTriangles(triangles: TriangleBuffer, backdropTriangles: TriangleBuffer = new Float32Array()): void {
     this.clearContent();
     this.placeholder.visible = false;
 
-    const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute("position", new THREE.BufferAttribute(triangles, 3));
-    geometry.computeVertexNormals();
-    geometry.computeBoundingSphere();
-
-    const material = new THREE.MeshStandardMaterial({
-      color: 0x9fc3cf,
-      metalness: 0,
-      roughness: 0.9,
-      side: THREE.DoubleSide
-    });
-    const mesh = new THREE.Mesh(geometry, material);
-
-    const wireGeometry = geometry.clone();
-    const wireMaterial = new THREE.MeshBasicMaterial({
-      color: 0x263238,
-      wireframe: true
-    });
-    const wire = new THREE.Mesh(wireGeometry, wireMaterial);
-
+    const mesh = this.createTriangleMesh(triangles, 0x9fc3cf, 1);
+    const wire = this.createWireMesh(triangles, 0x263238);
     this.content.add(mesh, wire);
+
+    if (backdropTriangles.length > 0) {
+      const backdrop = this.createTriangleMesh(backdropTriangles, 0x3d5363, 0.18);
+      const backdropWire = this.createWireMesh(backdropTriangles, 0x4e6c7c);
+      this.content.add(backdrop, backdropWire);
+    }
+
     this.frameObject(mesh);
   }
 
@@ -135,6 +126,36 @@ export class ViewerScene {
         }
       }
     }
+  }
+
+  private createTriangleMesh(triangles: TriangleBuffer, color: number, opacity: number): THREE.Mesh {
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute("position", new THREE.BufferAttribute(triangles, 3));
+    geometry.computeVertexNormals();
+    geometry.computeBoundingSphere();
+
+    const material = new THREE.MeshStandardMaterial({
+      color,
+      metalness: 0,
+      opacity,
+      roughness: 0.9,
+      side: THREE.DoubleSide,
+      transparent: opacity < 1
+    });
+
+    return new THREE.Mesh(geometry, material);
+  }
+
+  private createWireMesh(triangles: TriangleBuffer, color: number): THREE.Mesh {
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute("position", new THREE.BufferAttribute(triangles, 3));
+
+    const material = new THREE.MeshBasicMaterial({
+      color,
+      wireframe: true
+    });
+
+    return new THREE.Mesh(geometry, material);
   }
 
   private frameObject(object: THREE.Object3D): void {

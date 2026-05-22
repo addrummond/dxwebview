@@ -138,9 +138,12 @@ async function selectMap(entry: IndexedPackage): Promise<void> {
   try {
     state.selectedMap = await readIndexedPackageSummary(entry);
     if (state.selectedMap.geometry && state.selectedMap.geometry.triangles.length > 0) {
-      viewerScene.showTriangles(state.selectedMap.geometry.triangles);
+      viewerScene.showTriangles(
+        state.selectedMap.geometry.triangles,
+        state.selectedMap.geometry.backdropTriangles
+      );
       setStatus(
-        `Rendered ${state.selectedMap.geometry.triangles.length / 9} triangles from ${state.selectedMap.geometry.sourceExport}.`
+        `Rendered ${state.selectedMap.geometry.triangles.length / 9} visible triangles from ${state.selectedMap.geometry.sourceExport}.`
       );
     } else if (state.selectedMap.geometry) {
       viewerScene.showPointCloud(state.selectedMap.geometry.points);
@@ -267,9 +270,9 @@ function renderInspector(): void {
       <div><dt>Flags</dt><dd>0x${summary.packageFlags.toString(16).padStart(8, "0")}</dd></div>
       <div><dt>Geometry</dt><dd>${
         geometry
-          ? `${geometry.triangles.length / 9} triangles, ${geometry.points.length / 3} points from ${escapeHtml(
-              geometry.sourceExport
-            )}`
+          ? `${geometry.triangles.length / 9} visible, ${geometry.backdropTriangles.length / 9} backdrop, ${
+              geometry.invisibleTriangles.length / 9
+            } invisible triangles from ${escapeHtml(geometry.sourceExport)}`
           : "None"
       }</dd></div>
     </dl>

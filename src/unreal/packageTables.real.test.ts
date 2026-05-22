@@ -32,7 +32,7 @@ describe("readPackageTables with Deus Ex GOTY data", () => {
 
     expect(geometry?.sourceExport).toBe("Model189");
     expect(geometry?.points.length).toBe(22433 * 3);
-    expect(geometry?.triangles.length).toBe(37117 * 9);
+    expect(totalTriangleCoordinates(geometry)).toBe(37117 * 9);
   });
 
   it.skipIf(!existsSync(trainingPath))("triangulates the training map BSP model", async () => {
@@ -43,6 +43,14 @@ describe("readPackageTables with Deus Ex GOTY data", () => {
 
     expect(geometry?.sourceExport).toBe("Model36");
     expect(geometry?.points.length).toBe(16399 * 3);
-    expect(geometry?.triangles.length).toBe(26021 * 9);
+    expect(totalTriangleCoordinates(geometry)).toBe(26021 * 9);
   });
 });
+
+function totalTriangleCoordinates(geometry: ReturnType<typeof readLargestModelGeometry>): number {
+  return (
+    (geometry?.triangles.length ?? 0) +
+    (geometry?.backdropTriangles.length ?? 0) +
+    (geometry?.invisibleTriangles.length ?? 0)
+  );
+}
