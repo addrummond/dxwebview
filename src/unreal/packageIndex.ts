@@ -1,5 +1,6 @@
 import { readPackageTables, type UnrealPackageTables } from "./packageTables";
 import { readLargestModelGeometry, type UnrealModelGeometry } from "./modelPoints";
+import { readTextureImages, type UnrealTextureImage } from "./textureDecoder";
 
 export const KNOWN_PACKAGE_FOLDERS = ["Maps", "Textures", "System", "Sounds", "Music"] as const;
 
@@ -26,6 +27,7 @@ export interface PackageIndex {
 export interface IndexedPackageWithSummary extends IndexedPackage {
   tables: UnrealPackageTables;
   geometry: UnrealModelGeometry | null;
+  textures: Map<string, UnrealTextureImage>;
 }
 
 export function isUnrealPackageFile(fileName: string): boolean {
@@ -92,16 +94,92 @@ export async function buildPackageIndex(root: FileSystemDirectoryHandle): Promis
 }
 
 export async function readIndexedPackageSummary(
-  entry: IndexedPackage
+  entry: IndexedPackage,
+  index?: PackageIndex
 ): Promise<IndexedPackageWithSummary> {
   const buffer = await entry.file.arrayBuffer();
   const tables = readPackageTables(buffer);
+  const geometry = readLargestModelGeometry(buffer, tables);
 
   return {
     ...entry,
     tables,
-    geometry: readLargestModelGeometry(buffer, tables)
+    geometry,
+    textures: geometry ? await loadGeometryTextures(entry, buffer, tables, geometry, index) : new Map()
   };
+}
+
+async function loadGeometryTextures(
+  entry: IndexedPackage,
+  buffer: ArrayBuffer,
+  tables: UnrealPackageTables,
+  geometry: UnrealModelGeometry,
+  index: PackageIndex | undefined
+): Promise<Map<string, UnrealTextureImage>> {
+  const textures = readTextureImages(buffer, tables, entry.baseName, materialSetForPackage(geometry, entry.baseName, true));
+  const packageNames = new Set(geometry.materials.map((material) => material.textureName.split(".")[0]).filter(Boolean));
+
+  for (const packageName of packageNames) {
+    if (packageName.toLowerCase() === entry.baseName.toLowerCase()) {
+      continue;
+    }
+
+    const packageEntry = findTexturePackage(index, packageName);
+    if (!packageEntry) {
+      continue;
+    }
+
+    const packageBuffer = await packageEntry.file.arrayBuffer();
+    const packageTables = readPackageTables(packageBuffer);
+    mergeTextureMaps(
+      textures,
+      readTextureImages(packageBuffer, packageTables, packageEntry.baseName, materialSetForPackage(geometry, packageName))
+    );
+  }
+
+  return textures;
+}
+
+function materialSetForPackage(
+  geometry: UnrealModelGeometry,
+  packageName: string,
+  includeLocalMaterials = false
+): Set<string> {
+  const requested = new Set<string>();
+
+  for (const material of geometry.materials) {
+    const normalized = material.textureName.toLowerCase();
+    if (normalized === "none") {
+      continue;
+    }
+
+    if (includeLocalMaterials) {
+      requested.add(material.textureName);
+    } else if (normalized.startsWith(`${packageName.toLowerCase()}.`)) {
+      requested.add(material.textureName);
+    }
+  }
+
+  return requested;
+}
+
+function findTexturePackage(index: PackageIndex | undefined, packageName: string): IndexedPackage | null {
+  if (!index) {
+    return null;
+  }
+
+  return (
+    index.byKey.get(packageKey(packageName, "utx")) ??
+    index.byKey.get(packageKey(packageName, "dx")) ??
+    index.byKey.get(packageKey(packageName, "u")) ??
+    null
+  );
+}
+
+function mergeTextureMaps(target: Map<string, UnrealTextureImage>, source: Map<string, UnrealTextureImage>): void {
+  for (const [key, image] of source) {
+    target.set(key, image);
+  }
 }
 
 export function formatBytes(bytes: number): string {

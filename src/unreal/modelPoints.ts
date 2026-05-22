@@ -6,10 +6,16 @@ export interface UnrealModelGeometry {
   points: Float32Array;
   triangles: Float32Array;
   triangleColors: Float32Array;
+  triangleMaterialSpans: UnrealTriangleMaterialSpan[];
+  triangleUvs: Float32Array;
   backdropTriangles: Float32Array;
   backdropTriangleColors: Float32Array;
+  backdropTriangleMaterialSpans: UnrealTriangleMaterialSpan[];
+  backdropTriangleUvs: Float32Array;
   invisibleTriangles: Float32Array;
   invisibleTriangleColors: Float32Array;
+  invisibleTriangleMaterialSpans: UnrealTriangleMaterialSpan[];
+  invisibleTriangleUvs: Float32Array;
   materials: UnrealSurfaceMaterialUsage[];
   surfaceCount: number;
 }
@@ -17,6 +23,12 @@ export interface UnrealModelGeometry {
 export interface UnrealSurfaceMaterialUsage {
   textureName: string;
   triangleCount: number;
+}
+
+export interface UnrealTriangleMaterialSpan {
+  count: number;
+  start: number;
+  textureName: string;
 }
 
 interface ModelCandidate extends UnrealExportEntry {
@@ -30,8 +42,13 @@ interface BspNode {
 }
 
 interface BspSurface {
+  panU: number;
+  panV: number;
+  pBase: number;
   polyFlags: number;
   textureName: string;
+  textureU: number;
+  textureV: number;
 }
 
 interface BspVert {
@@ -65,44 +82,64 @@ export function readLargestModelGeometry(
 
   // UModel serializes FBox + FSphere before its model arrays in UE1.
   reader.skip(41);
-  skipVectorArray(reader);
-  const points = readPointArray(reader);
+  const vectors = readVectorArray(reader);
+  const { points, rawPoints } = readPointArray(reader);
   const nodes = readBspNodes(reader);
   const surfaces = readBspSurfaces(reader, tables);
   const verts = readBspVerts(reader);
-  const geometry = triangulateNodes(points, nodes, surfaces, verts);
+  const geometry = triangulateNodes(points, rawPoints, vectors, nodes, surfaces, verts);
 
   return {
     sourceExport: model.objectName,
     points,
     triangles: geometry.solid.positions,
     triangleColors: geometry.solid.colors,
+    triangleMaterialSpans: geometry.solid.materialSpans,
+    triangleUvs: geometry.solid.uvs,
     backdropTriangles: geometry.backdrop.positions,
     backdropTriangleColors: geometry.backdrop.colors,
+    backdropTriangleMaterialSpans: geometry.backdrop.materialSpans,
+    backdropTriangleUvs: geometry.backdrop.uvs,
     invisibleTriangles: geometry.invisible.positions,
     invisibleTriangleColors: geometry.invisible.colors,
+    invisibleTriangleMaterialSpans: geometry.invisible.materialSpans,
+    invisibleTriangleUvs: geometry.invisible.uvs,
     materials: geometry.materials,
     surfaceCount: surfaces.length
   };
 }
 
-function skipVectorArray(reader: BinaryReader): void {
+function readVectorArray(reader: BinaryReader): Float32Array {
   const count = reader.readCompactIndex();
-  reader.skip(count * 12);
+  const vectors = new Float32Array(count * 3);
+
+  for (let index = 0; index < count; index += 1) {
+    const target = index * 3;
+    vectors[target] = reader.readFloat32();
+    vectors[target + 1] = reader.readFloat32();
+    vectors[target + 2] = reader.readFloat32();
+  }
+
+  return vectors;
 }
 
-function readPointArray(reader: BinaryReader): Float32Array {
+function readPointArray(reader: BinaryReader): { points: Float32Array; rawPoints: Float32Array } {
   const pointCount = reader.readCompactIndex();
   const points = new Float32Array(pointCount * 3);
+  const rawPoints = new Float32Array(pointCount * 3);
 
   for (let index = 0; index < pointCount; index += 1) {
     const x = reader.readFloat32();
     const y = reader.readFloat32();
     const z = reader.readFloat32();
+    const target = index * 3;
+    rawPoints[target] = x;
+    rawPoints[target + 1] = y;
+    rawPoints[target + 2] = z;
     writePoint(points, index, x, y, z);
   }
 
-  return points;
+  return { points, rawPoints };
 }
 
 function readBspNodes(reader: BinaryReader): BspNode[] {
@@ -137,15 +174,16 @@ function readBspSurfaces(reader: BinaryReader, tables: UnrealPackageTables): Bsp
   for (let index = 0; index < surfaceCount; index += 1) {
     const textureIndex = reader.readCompactIndex();
     const polyFlags = reader.readUint32();
+    const pBase = reader.readCompactIndex();
+    reader.readCompactIndex();
+    const textureU = reader.readCompactIndex();
+    const textureV = reader.readCompactIndex();
     reader.readCompactIndex();
     reader.readCompactIndex();
+    const panU = reader.readInt16();
+    const panV = reader.readInt16();
     reader.readCompactIndex();
-    reader.readCompactIndex();
-    reader.readCompactIndex();
-    reader.readCompactIndex();
-    reader.skip(4);
-    reader.readCompactIndex();
-    surfaces.push({ polyFlags, textureName: resolveObjectPath(textureIndex, tables) });
+    surfaces.push({ panU, panV, pBase, polyFlags, textureName: resolveObjectPath(textureIndex, tables), textureU, textureV });
   }
 
   return surfaces;
@@ -167,6 +205,8 @@ function readBspVerts(reader: BinaryReader): BspVert[] {
 
 function triangulateNodes(
   points: Float32Array,
+  rawPoints: Float32Array,
+  vectors: Float32Array,
   nodes: BspNode[],
   surfaces: BspSurface[],
   verts: BspVert[]
@@ -201,10 +241,13 @@ function triangulateNodes(
     const color = colorForTexture(surface?.textureName);
 
     for (let index = 1; index < polygon.length - 1; index += 1) {
-      pushColoredPoint(target, points, polygon[0], color);
-      pushColoredPoint(target, points, polygon[index], color);
-      pushColoredPoint(target, points, polygon[index + 1], color);
-      materialCounts.set(surface?.textureName ?? "None", (materialCounts.get(surface?.textureName ?? "None") ?? 0) + 1);
+      const textureName = surface?.textureName ?? "None";
+      startMaterialSpan(target, textureName);
+      pushColoredPoint(target, points, rawPoints, vectors, polygon[0], surface, color);
+      pushColoredPoint(target, points, rawPoints, vectors, polygon[index], surface, color);
+      pushColoredPoint(target, points, rawPoints, vectors, polygon[index + 1], surface, color);
+      extendMaterialSpan(target, 3);
+      materialCounts.set(textureName, (materialCounts.get(textureName) ?? 0) + 1);
     }
   }
 
@@ -220,12 +263,16 @@ function triangulateNodes(
 
 interface TriangleLayerWriter {
   colors: number[];
+  materialSpans: UnrealTriangleMaterialSpan[];
   positions: number[];
+  uvs: number[];
 }
 
 interface TriangleLayerBuffers {
   colors: Float32Array;
+  materialSpans: UnrealTriangleMaterialSpan[];
   positions: Float32Array;
+  uvs: Float32Array;
 }
 
 interface RgbColor {
@@ -237,14 +284,18 @@ interface RgbColor {
 function createTriangleLayerWriter(): TriangleLayerWriter {
   return {
     colors: [],
-    positions: []
+    materialSpans: [],
+    positions: [],
+    uvs: []
   };
 }
 
 function finishTriangleLayer(layer: TriangleLayerWriter): TriangleLayerBuffers {
   return {
     colors: new Float32Array(layer.colors),
-    positions: new Float32Array(layer.positions)
+    materialSpans: layer.materialSpans,
+    positions: new Float32Array(layer.positions),
+    uvs: new Float32Array(layer.uvs)
   };
 }
 
@@ -274,10 +325,66 @@ function writePoint(points: Float32Array, index: number, x: number, y: number, z
   points[target + 2] = -y;
 }
 
-function pushColoredPoint(layer: TriangleLayerWriter, points: Float32Array, pointIndex: number, color: RgbColor): void {
+function startMaterialSpan(layer: TriangleLayerWriter, textureName: string): void {
+  const start = layer.positions.length / 3;
+  const previous = layer.materialSpans.at(-1);
+
+  if (previous && previous.start + previous.count === start && previous.textureName === textureName) {
+    return;
+  }
+
+  layer.materialSpans.push({ count: 0, start, textureName });
+}
+
+function extendMaterialSpan(layer: TriangleLayerWriter, count: number): void {
+  const span = layer.materialSpans.at(-1);
+
+  if (span) {
+    span.count += count;
+  }
+}
+
+function pushColoredPoint(
+  layer: TriangleLayerWriter,
+  points: Float32Array,
+  rawPoints: Float32Array,
+  vectors: Float32Array,
+  pointIndex: number,
+  surface: BspSurface | undefined,
+  color: RgbColor
+): void {
   const source = pointIndex * 3;
   layer.positions.push(points[source], points[source + 1], points[source + 2]);
   layer.colors.push(color.r, color.g, color.b);
+  pushSurfaceUv(layer, rawPoints, vectors, pointIndex, surface);
+}
+
+function pushSurfaceUv(
+  layer: TriangleLayerWriter,
+  rawPoints: Float32Array,
+  vectors: Float32Array,
+  pointIndex: number,
+  surface: BspSurface | undefined
+): void {
+  if (!surface || !hasVector(rawPoints, surface.pBase) || !hasVector(vectors, surface.textureU) || !hasVector(vectors, surface.textureV)) {
+    layer.uvs.push(0, 0);
+    return;
+  }
+
+  const point = pointIndex * 3;
+  const base = surface.pBase * 3;
+  const textureU = surface.textureU * 3;
+  const textureV = surface.textureV * 3;
+  const x = rawPoints[point] - rawPoints[base];
+  const y = rawPoints[point + 1] - rawPoints[base + 1];
+  const z = rawPoints[point + 2] - rawPoints[base + 2];
+  const u = x * vectors[textureU] + y * vectors[textureU + 1] + z * vectors[textureU + 2] + surface.panU;
+  const v = x * vectors[textureV] + y * vectors[textureV + 1] + z * vectors[textureV + 2] + surface.panV;
+  layer.uvs.push(u, v);
+}
+
+function hasVector(values: Float32Array, index: number): boolean {
+  return index >= 0 && index * 3 + 2 < values.length;
 }
 
 function colorForTexture(textureName = "None"): RgbColor {

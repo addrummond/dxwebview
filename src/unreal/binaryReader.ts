@@ -41,6 +41,13 @@ export class BinaryReader {
     return value;
   }
 
+  readInt16(): number {
+    this.ensure(2);
+    const value = this.view.getInt16(this.offset, true);
+    this.offset += 2;
+    return value;
+  }
+
   readInt32(): number {
     this.ensure(4);
     const value = this.view.getInt32(this.offset, true);

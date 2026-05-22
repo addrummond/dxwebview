@@ -166,7 +166,7 @@ async function selectMap(entry: IndexedPackage): Promise<void> {
   render();
 
   try {
-    state.selectedMap = await readIndexedPackageSummary(entry);
+    state.selectedMap = await readIndexedPackageSummary(entry, state.index ?? undefined);
     if (state.selectedMap.geometry && totalTriangleCount(state.selectedMap.geometry) > 0) {
       state.surfaceVisibility = defaultSurfaceVisibility(state.selectedMap.geometry);
       refreshSelectedGeometry();
@@ -212,7 +212,8 @@ function render(): void {
 }
 
 function refreshSelectedGeometry(): void {
-  const geometry = state.selectedMap?.geometry;
+  const selectedMap = state.selectedMap;
+  const geometry = selectedMap?.geometry;
 
   if (!geometry) {
     render();
@@ -223,23 +224,30 @@ function refreshSelectedGeometry(): void {
     {
       backdrop: {
         colors: geometry.backdropTriangleColors,
-        positions: geometry.backdropTriangles
+        materialSpans: geometry.backdropTriangleMaterialSpans,
+        positions: geometry.backdropTriangles,
+        uvs: geometry.backdropTriangleUvs
       },
       invisible: {
         colors: geometry.invisibleTriangleColors,
-        positions: geometry.invisibleTriangles
+        materialSpans: geometry.invisibleTriangleMaterialSpans,
+        positions: geometry.invisibleTriangles,
+        uvs: geometry.invisibleTriangleUvs
       },
       solid: {
         colors: geometry.triangleColors,
-        positions: geometry.triangles
+        materialSpans: geometry.triangleMaterialSpans,
+        positions: geometry.triangles,
+        uvs: geometry.triangleUvs
       }
     },
-    state.surfaceVisibility
+    state.surfaceVisibility,
+    selectedMap.textures
   );
   setStatus(
     `Rendered ${displayedTriangleCount(geometry, state.surfaceVisibility)} of ${totalTriangleCount(
       geometry
-    )} BSP triangles from ${geometry.sourceExport}.`
+    )} BSP triangles from ${geometry.sourceExport} with ${selectedMap.textures.size} decoded textures.`
   );
 }
 
