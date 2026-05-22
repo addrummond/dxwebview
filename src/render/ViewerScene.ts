@@ -204,9 +204,8 @@ export class ViewerScene {
     const canvas = this.renderer.domElement;
     canvas.addEventListener("pointerdown", this.handlePointerDown);
     canvas.addEventListener("pointermove", this.handlePointerMove);
-    canvas.addEventListener("pointerup", this.handlePointerUp);
-    canvas.addEventListener("pointercancel", this.handlePointerUp);
     canvas.addEventListener("blur", this.handleBlur);
+    document.addEventListener("pointerlockchange", this.handlePointerLockChange);
     window.addEventListener("keydown", this.handleKeyDown);
     window.addEventListener("keyup", this.handleKeyUp);
     window.addEventListener("blur", this.handleBlur);
@@ -216,9 +215,8 @@ export class ViewerScene {
     const canvas = this.renderer.domElement;
     canvas.removeEventListener("pointerdown", this.handlePointerDown);
     canvas.removeEventListener("pointermove", this.handlePointerMove);
-    canvas.removeEventListener("pointerup", this.handlePointerUp);
-    canvas.removeEventListener("pointercancel", this.handlePointerUp);
     canvas.removeEventListener("blur", this.handleBlur);
+    document.removeEventListener("pointerlockchange", this.handlePointerLockChange);
     window.removeEventListener("keydown", this.handleKeyDown);
     window.removeEventListener("keyup", this.handleKeyUp);
     window.removeEventListener("blur", this.handleBlur);
@@ -230,13 +228,19 @@ export class ViewerScene {
     }
 
     this.renderer.domElement.focus();
-    this.renderer.domElement.setPointerCapture(event.pointerId);
     this.isMouseLooking = true;
+    if (isTopLevelWindow()) {
+      try {
+        void this.renderer.domElement.requestPointerLock().catch(() => undefined);
+      } catch {
+        // Some browser surfaces disallow pointer lock; focused-canvas freelook still works.
+      }
+    }
     event.preventDefault();
   };
 
   private handlePointerMove = (event: PointerEvent): void => {
-    if (!this.isMouseLooking) {
+    if (!this.isMouseLooking && document.pointerLockElement !== this.renderer.domElement) {
       return;
     }
 
@@ -246,15 +250,19 @@ export class ViewerScene {
     this.applyLookAngles();
   };
 
-  private handlePointerUp = (event: PointerEvent): void => {
-    if (this.renderer.domElement.hasPointerCapture(event.pointerId)) {
-      this.renderer.domElement.releasePointerCapture(event.pointerId);
-    }
-
-    this.isMouseLooking = false;
+  private handlePointerLockChange = (): void => {
+    this.isMouseLooking = document.pointerLockElement === this.renderer.domElement;
   };
 
   private handleKeyDown = (event: KeyboardEvent): void => {
+    if (event.code === "Escape" && this.isKeyboardInputActive()) {
+      this.isMouseLooking = false;
+      if (document.pointerLockElement === this.renderer.domElement) {
+        document.exitPointerLock();
+      }
+      return;
+    }
+
     if (!this.isKeyboardInputActive() || !isMovementKey(event.code)) {
       return;
     }
@@ -271,7 +279,9 @@ export class ViewerScene {
 
   private handleBlur = (): void => {
     this.pressedKeys.clear();
-    this.isMouseLooking = false;
+    if (document.pointerLockElement !== this.renderer.domElement) {
+      this.isMouseLooking = false;
+    }
   };
 
   private isKeyboardInputActive(): boolean {
@@ -420,4 +430,12 @@ function isMovementKey(code: string): boolean {
     code === "ControlLeft" ||
     code === "ControlRight"
   );
+}
+
+function isTopLevelWindow(): boolean {
+  try {
+    return window.self === window.top;
+  } catch {
+    return false;
+  }
 }

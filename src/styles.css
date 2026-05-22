@@ -274,12 +274,12 @@ h2 {
   display: block;
   width: 100%;
   height: 100%;
-  cursor: grab;
+  cursor: crosshair;
   outline: none;
 }
 
 .viewport-canvas:active {
-  cursor: grabbing;
+  cursor: crosshair;
 }
 
 .viewport-canvas:focus-visible {
