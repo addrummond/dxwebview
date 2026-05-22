@@ -15,6 +15,7 @@ import { readTextureImages } from "./textureDecoder";
 const deusExRoot = process.env.DEUS_EX_GOTY_PATH ?? "/Users/alex/deus_ex_goty_51757";
 const unatcoIslandPath = `${deusExRoot}/Maps/01_NYC_UNATCOIsland.dx`;
 const trainingPath = `${deusExRoot}/Maps/00_Training.dx`;
+const hongKongCanalPath = `${deusExRoot}/Maps/06_HongKong_WanChai_Canal.dx`;
 const concreteTexturePath = `${deusExRoot}/Textures/CoreTexConcrete.utx`;
 
 describe("readPackageTables with Deus Ex GOTY data", () => {
@@ -61,6 +62,15 @@ describe("readPackageTables with Deus Ex GOTY data", () => {
     expect(totalUvCoordinates(geometry)).toBe((totalTriangleCoordinates(geometry) / 3) * 2);
     expect(totalMaterialTriangles(geometry)).toBe(26021);
     expect(geometry?.materials.length).toBeGreaterThan(10);
+  });
+
+  it.skipIf(!existsSync(hongKongCanalPath))("marks masked surfaces in Hong Kong canal geometry", async () => {
+    const file = await readFile(hongKongCanalPath);
+    const buffer = file.buffer.slice(file.byteOffset, file.byteOffset + file.byteLength);
+    const tables = readPackageTables(buffer);
+    const geometry = readLargestModelGeometry(buffer, tables);
+
+    expect(geometry?.triangleMaterialSpans.some((span) => span.renderMode === "masked")).toBe(true);
   });
 
   it.skipIf(!existsSync(concreteTexturePath))("decodes real Deus Ex paletted textures", async () => {

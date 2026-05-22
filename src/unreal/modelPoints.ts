@@ -27,9 +27,12 @@ export interface UnrealSurfaceMaterialUsage {
 
 export interface UnrealTriangleMaterialSpan {
   count: number;
+  renderMode: UnrealSurfaceRenderMode;
   start: number;
   textureName: string;
 }
+
+export type UnrealSurfaceRenderMode = "masked" | "opaque" | "translucent";
 
 interface ModelCandidate extends UnrealExportEntry {
   className: string;
@@ -56,6 +59,8 @@ interface BspVert {
 }
 
 const POLY_FLAG_INVISIBLE = 0x00000001;
+const POLY_FLAG_MASKED = 0x00000002;
+const POLY_FLAG_TRANSLUCENT = 0x00000004;
 const POLY_FLAG_FAKE_BACKDROP = 0x00000080;
 
 export function readLargestModelGeometry(
@@ -238,11 +243,12 @@ function triangulateNodes(
 
     const surface = surfaces[node.surfaceIndex];
     const target = triangleTargetForSurface(surface, solid, backdrop, invisible);
+    const renderMode = renderModeForSurface(surface);
     const color = colorForTexture(surface?.textureName);
 
     for (let index = 1; index < polygon.length - 1; index += 1) {
       const textureName = surface?.textureName ?? "None";
-      startMaterialSpan(target, textureName);
+      startMaterialSpan(target, textureName, renderMode);
       pushColoredPoint(target, points, rawPoints, vectors, polygon[0], surface, color);
       pushColoredPoint(target, points, rawPoints, vectors, polygon[index], surface, color);
       pushColoredPoint(target, points, rawPoints, vectors, polygon[index + 1], surface, color);
@@ -325,15 +331,24 @@ function writePoint(points: Float32Array, index: number, x: number, y: number, z
   points[target + 2] = -y;
 }
 
-function startMaterialSpan(layer: TriangleLayerWriter, textureName: string): void {
+function startMaterialSpan(
+  layer: TriangleLayerWriter,
+  textureName: string,
+  renderMode: UnrealSurfaceRenderMode
+): void {
   const start = layer.positions.length / 3;
   const previous = layer.materialSpans.at(-1);
 
-  if (previous && previous.start + previous.count === start && previous.textureName === textureName) {
+  if (
+    previous &&
+    previous.start + previous.count === start &&
+    previous.textureName === textureName &&
+    previous.renderMode === renderMode
+  ) {
     return;
   }
 
-  layer.materialSpans.push({ count: 0, start, textureName });
+  layer.materialSpans.push({ count: 0, renderMode, start, textureName });
 }
 
 function extendMaterialSpan(layer: TriangleLayerWriter, count: number): void {
@@ -385,6 +400,20 @@ function pushSurfaceUv(
 
 function hasVector(values: Float32Array, index: number): boolean {
   return index >= 0 && index * 3 + 2 < values.length;
+}
+
+function renderModeForSurface(surface: BspSurface | undefined): UnrealSurfaceRenderMode {
+  const flags = surface?.polyFlags ?? 0;
+
+  if ((flags & POLY_FLAG_MASKED) !== 0) {
+    return "masked";
+  }
+
+  if ((flags & POLY_FLAG_TRANSLUCENT) !== 0) {
+    return "translucent";
+  }
+
+  return "opaque";
 }
 
 function colorForTexture(textureName = "None"): RgbColor {

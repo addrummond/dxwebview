@@ -13,6 +13,7 @@ export interface TriangleLayer {
 
 export interface TriangleMaterialSpan {
   count: number;
+  renderMode: "masked" | "opaque" | "translucent";
   start: number;
   textureName: string;
 }
@@ -228,14 +229,18 @@ export class ViewerScene {
 
     for (const span of layer.materialSpans) {
       const texture = textures.get(span.textureName.toLowerCase());
-      const key = texture ? `texture:${span.textureName}` : `fallback:${span.textureName}`;
+      const key = texture
+        ? `texture:${span.textureName}:${span.renderMode}`
+        : `fallback:${span.textureName}:${span.renderMode}`;
       let materialIndex = materialIndexes.get(key);
 
       if (materialIndex === undefined) {
         materialIndex = materials.length;
         materialIndexes.set(key, materialIndex);
         materials.push(
-          texture ? this.createTexturedMaterial(texture, opacity) : this.createFallbackMaterial(color, opacity, layer)
+          texture
+            ? this.createTexturedMaterial(texture, opacity, span.renderMode)
+            : this.createFallbackMaterial(color, opacityForRenderMode(opacity, span.renderMode), layer)
         );
       }
 
@@ -257,8 +262,17 @@ export class ViewerScene {
     });
   }
 
-  private createTexturedMaterial(textureImage: UnrealTextureImage, opacity: number): THREE.MeshStandardMaterial {
-    const texture = new THREE.DataTexture(textureImage.rgba, textureImage.width, textureImage.height, THREE.RGBAFormat);
+  private createTexturedMaterial(
+    textureImage: UnrealTextureImage,
+    opacity: number,
+    renderMode: TriangleMaterialSpan["renderMode"]
+  ): THREE.MeshStandardMaterial {
+    const texture = new THREE.DataTexture(
+      rgbaForRenderMode(textureImage, renderMode),
+      textureImage.width,
+      textureImage.height,
+      THREE.RGBAFormat
+    );
     texture.colorSpace = THREE.SRGBColorSpace;
     texture.generateMipmaps = false;
     texture.magFilter = THREE.NearestFilter;
@@ -269,12 +283,13 @@ export class ViewerScene {
     texture.needsUpdate = true;
 
     return new THREE.MeshStandardMaterial({
+      alphaTest: renderMode === "masked" ? 0.5 : 0,
       map: texture,
       metalness: 0,
-      opacity,
+      opacity: opacityForRenderMode(opacity, renderMode),
       roughness: 0.9,
       side: THREE.DoubleSide,
-      transparent: opacity < 1
+      transparent: renderMode === "translucent" || opacity < 1
     });
   }
 
@@ -563,4 +578,32 @@ function disposeMaterial(material: THREE.Material): void {
   }
 
   material.dispose();
+}
+
+function rgbaForRenderMode(
+  textureImage: UnrealTextureImage,
+  renderMode: TriangleMaterialSpan["renderMode"]
+): Uint8Array {
+  if (renderMode !== "masked") {
+    return textureImage.rgba;
+  }
+
+  const rgba = new Uint8Array(textureImage.rgba);
+  const pixelCount = Math.min(textureImage.indices.length, textureImage.width * textureImage.height);
+
+  for (let index = 0; index < pixelCount; index += 1) {
+    if (textureImage.indices[index] === 0) {
+      rgba[index * 4 + 3] = 0;
+    }
+  }
+
+  return rgba;
+}
+
+function opacityForRenderMode(opacity: number, renderMode: TriangleMaterialSpan["renderMode"]): number {
+  if (renderMode === "translucent") {
+    return Math.min(opacity, 0.45);
+  }
+
+  return opacity;
 }

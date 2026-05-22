@@ -3,6 +3,7 @@ import type { UnrealExportEntry, UnrealImportEntry, UnrealPackageTables } from "
 
 export interface UnrealTextureImage {
   height: number;
+  indices: Uint8Array;
   name: string;
   rgba: Uint8Array;
   width: number;
@@ -135,6 +136,7 @@ function readTextureImage(
 
   return {
     height: mip.height,
+    indices: mip.data,
     name: texture.objectPath,
     rgba: indexedPixelsToRgba(mip, palette),
     width: mip.width
