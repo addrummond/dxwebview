@@ -1,5 +1,4 @@
 import * as THREE from "three";
-import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 
 type TriangleBuffer = Float32Array<ArrayBufferLike>;
 
@@ -19,13 +18,23 @@ export class ViewerScene {
   private readonly renderer: THREE.WebGLRenderer;
   private readonly scene: THREE.Scene;
   private readonly camera: THREE.PerspectiveCamera;
-  private readonly controls: OrbitControls;
   private readonly container: HTMLElement;
   private readonly resizeObserver: ResizeObserver;
   private readonly content = new THREE.Group();
   private readonly placeholder: THREE.Mesh;
+  private readonly pressedKeys = new Set<string>();
+  private readonly lookEuler = new THREE.Euler(0, 0, 0, "YXZ");
+  private readonly moveVector = new THREE.Vector3();
+  private readonly forwardVector = new THREE.Vector3();
+  private readonly rightVector = new THREE.Vector3();
+  private readonly upVector = new THREE.Vector3(0, 1, 0);
   private frameTargets: THREE.Object3D[] = [];
+  private isMouseLooking = false;
+  private yaw = 0;
+  private pitch = 0;
+  private movementSpeed = 400;
   private animationFrameId = 0;
+  private lastFrameTime = performance.now();
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -33,20 +42,19 @@ export class ViewerScene {
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.setClearColor(0x151719, 1);
     this.renderer.domElement.className = "viewport-canvas";
+    this.renderer.domElement.tabIndex = 0;
 
     this.scene = new THREE.Scene();
     this.camera = new THREE.PerspectiveCamera(55, 1, 0.1, 10000);
     this.camera.position.set(4, 3, 6);
     this.camera.lookAt(0, 0, 0);
+    this.syncLookAnglesFromCamera();
 
     this.container.append(this.renderer.domElement);
     this.scene.add(this.content);
-    this.controls = new OrbitControls(this.camera, this.renderer.domElement);
-    this.controls.enableDamping = true;
-    this.controls.dampingFactor = 0.08;
-    this.controls.screenSpacePanning = false;
     this.resizeObserver = new ResizeObserver(() => this.resize());
     this.resizeObserver.observe(this.container);
+    this.addInputListeners();
 
     this.addBaseScene();
     this.placeholder = this.addPlaceholderCube();
@@ -109,8 +117,7 @@ export class ViewerScene {
     this.frameTargets = [this.placeholder];
     this.camera.position.set(4, 3, 6);
     this.camera.lookAt(0, 0, 0);
-    this.controls.target.set(0, 0, 0);
-    this.controls.update();
+    this.syncLookAnglesFromCamera();
   }
 
   resetView(): void {
@@ -119,7 +126,7 @@ export class ViewerScene {
 
   dispose(): void {
     cancelAnimationFrame(this.animationFrameId);
-    this.controls.dispose();
+    this.removeInputListeners();
     this.resizeObserver.disconnect();
     this.renderer.dispose();
     this.renderer.domElement.remove();
@@ -193,6 +200,135 @@ export class ViewerScene {
     return new THREE.Mesh(geometry, material);
   }
 
+  private addInputListeners(): void {
+    const canvas = this.renderer.domElement;
+    canvas.addEventListener("pointerdown", this.handlePointerDown);
+    canvas.addEventListener("pointermove", this.handlePointerMove);
+    canvas.addEventListener("pointerup", this.handlePointerUp);
+    canvas.addEventListener("pointercancel", this.handlePointerUp);
+    canvas.addEventListener("blur", this.handleBlur);
+    window.addEventListener("keydown", this.handleKeyDown);
+    window.addEventListener("keyup", this.handleKeyUp);
+    window.addEventListener("blur", this.handleBlur);
+  }
+
+  private removeInputListeners(): void {
+    const canvas = this.renderer.domElement;
+    canvas.removeEventListener("pointerdown", this.handlePointerDown);
+    canvas.removeEventListener("pointermove", this.handlePointerMove);
+    canvas.removeEventListener("pointerup", this.handlePointerUp);
+    canvas.removeEventListener("pointercancel", this.handlePointerUp);
+    canvas.removeEventListener("blur", this.handleBlur);
+    window.removeEventListener("keydown", this.handleKeyDown);
+    window.removeEventListener("keyup", this.handleKeyUp);
+    window.removeEventListener("blur", this.handleBlur);
+  }
+
+  private handlePointerDown = (event: PointerEvent): void => {
+    if (event.button !== 0) {
+      return;
+    }
+
+    this.renderer.domElement.focus();
+    this.renderer.domElement.setPointerCapture(event.pointerId);
+    this.isMouseLooking = true;
+    event.preventDefault();
+  };
+
+  private handlePointerMove = (event: PointerEvent): void => {
+    if (!this.isMouseLooking) {
+      return;
+    }
+
+    this.yaw -= event.movementX * 0.002;
+    this.pitch -= event.movementY * 0.002;
+    this.pitch = THREE.MathUtils.clamp(this.pitch, -Math.PI / 2 + 0.01, Math.PI / 2 - 0.01);
+    this.applyLookAngles();
+  };
+
+  private handlePointerUp = (event: PointerEvent): void => {
+    if (this.renderer.domElement.hasPointerCapture(event.pointerId)) {
+      this.renderer.domElement.releasePointerCapture(event.pointerId);
+    }
+
+    this.isMouseLooking = false;
+  };
+
+  private handleKeyDown = (event: KeyboardEvent): void => {
+    if (!this.isKeyboardInputActive() || !isMovementKey(event.code)) {
+      return;
+    }
+
+    this.pressedKeys.add(event.code);
+    event.preventDefault();
+  };
+
+  private handleKeyUp = (event: KeyboardEvent): void => {
+    if (isMovementKey(event.code)) {
+      this.pressedKeys.delete(event.code);
+    }
+  };
+
+  private handleBlur = (): void => {
+    this.pressedKeys.clear();
+    this.isMouseLooking = false;
+  };
+
+  private isKeyboardInputActive(): boolean {
+    return document.activeElement === this.renderer.domElement || this.isMouseLooking;
+  }
+
+  private syncLookAnglesFromCamera(): void {
+    this.lookEuler.setFromQuaternion(this.camera.quaternion, "YXZ");
+    this.pitch = this.lookEuler.x;
+    this.yaw = this.lookEuler.y;
+  }
+
+  private applyLookAngles(): void {
+    this.lookEuler.set(this.pitch, this.yaw, 0, "YXZ");
+    this.camera.quaternion.setFromEuler(this.lookEuler);
+  }
+
+  private updateFreeFly(deltaSeconds: number): void {
+    if (this.pressedKeys.size === 0) {
+      return;
+    }
+
+    this.moveVector.set(0, 0, 0);
+    this.camera.getWorldDirection(this.forwardVector);
+    this.rightVector.crossVectors(this.forwardVector, this.upVector).normalize();
+
+    if (this.pressedKeys.has("KeyW")) {
+      this.moveVector.add(this.forwardVector);
+    }
+    if (this.pressedKeys.has("KeyS")) {
+      this.moveVector.sub(this.forwardVector);
+    }
+    if (this.pressedKeys.has("KeyD")) {
+      this.moveVector.add(this.rightVector);
+    }
+    if (this.pressedKeys.has("KeyA")) {
+      this.moveVector.sub(this.rightVector);
+    }
+    if (this.pressedKeys.has("Space") || this.pressedKeys.has("KeyE")) {
+      this.moveVector.add(this.upVector);
+    }
+    if (this.pressedKeys.has("ControlLeft") || this.pressedKeys.has("ControlRight") || this.pressedKeys.has("KeyQ")) {
+      this.moveVector.sub(this.upVector);
+    }
+
+    if (this.moveVector.lengthSq() === 0) {
+      return;
+    }
+
+    const speedMultiplier =
+      this.pressedKeys.has("ShiftLeft") || this.pressedKeys.has("ShiftRight") ? 3 : 1;
+    this.camera.position.addScaledVector(
+      this.moveVector.normalize(),
+      this.movementSpeed * speedMultiplier * deltaSeconds
+    );
+  }
+
   private disposeObject(object: THREE.Object3D): void {
     for (const child of object.children) {
       this.disposeObject(child);
@@ -237,12 +373,12 @@ export class ViewerScene {
     const radius = Math.max(size.x, size.y, size.z, 1);
 
     this.camera.position.set(center.x + radius * 0.55, center.y + radius * 0.35, center.z + radius * 0.9);
+    this.movementSpeed = Math.max(radius * 0.65, 250);
     this.camera.near = Math.max(radius / 10000, 1);
     this.camera.far = Math.max(radius * 8, 1000);
     this.camera.lookAt(center);
-    this.controls.target.copy(center);
     this.camera.updateProjectionMatrix();
-    this.controls.update();
+    this.syncLookAnglesFromCamera();
   }
 
   private resize(): void {
@@ -257,12 +393,31 @@ export class ViewerScene {
 
   private animate = (): void => {
     this.animationFrameId = requestAnimationFrame(this.animate);
+    const now = performance.now();
+    const deltaSeconds = Math.min((now - this.lastFrameTime) / 1000, 0.1);
+    this.lastFrameTime = now;
 
     if (this.placeholder.visible) {
       this.placeholder.rotation.y += 0.004;
     }
 
-    this.controls.update();
+    this.updateFreeFly(deltaSeconds);
     this.renderer.render(this.scene, this.camera);
   };
+}
+
+function isMovementKey(code: string): boolean {
+  return (
+    code === "KeyW" ||
+    code === "KeyA" ||
+    code === "KeyS" ||
+    code === "KeyD" ||
+    code === "KeyQ" ||
+    code === "KeyE" ||
+    code === "Space" ||
+    code === "ShiftLeft" ||
+    code === "ShiftRight" ||
+    code === "ControlLeft" ||
+    code === "ControlRight"
+  );
 }

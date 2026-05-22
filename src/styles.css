@@ -274,6 +274,17 @@ h2 {
   display: block;
   width: 100%;
   height: 100%;
+  cursor: grab;
+  outline: none;
+}
+
+.viewport-canvas:active {
+  cursor: grabbing;
+}
+
+.viewport-canvas:focus-visible {
+  outline: 1px solid #77a0ae;
+  outline-offset: -1px;
 }
 
 .inspector-content {
