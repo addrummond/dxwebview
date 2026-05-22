@@ -1,4 +1,4 @@
-import { readPackageSummary, type UnrealPackageSummary } from "./packageSummary";
+import { readPackageTables, type UnrealPackageTables } from "./packageTables";
 
 export const KNOWN_PACKAGE_FOLDERS = ["Maps", "Textures", "System", "Sounds", "Music"] as const;
 
@@ -23,7 +23,7 @@ export interface PackageIndex {
 }
 
 export interface IndexedPackageWithSummary extends IndexedPackage {
-  summary: UnrealPackageSummary;
+  tables: UnrealPackageTables;
 }
 
 export function isUnrealPackageFile(fileName: string): boolean {
@@ -95,7 +95,7 @@ export async function readIndexedPackageSummary(
   const buffer = await entry.file.arrayBuffer();
   return {
     ...entry,
-    summary: readPackageSummary(buffer)
+    tables: readPackageTables(buffer)
   };
 }
 

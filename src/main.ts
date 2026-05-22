@@ -229,19 +229,46 @@ function renderInspector(): void {
   }
 
   viewportTitleElement.textContent = selected.baseName;
+  const { summary, names, imports, exports } = selected.tables;
+  const sampleNames = names.slice(0, 10).map((entry) => entry.name);
+  const sampleImports = imports
+    .slice(0, 8)
+    .map((entry) => `${entry.objectName} : ${entry.classPackage}.${entry.className}`);
+  const sampleExports = exports
+    .slice(0, 8)
+    .map((entry) => `${entry.objectName} (${formatBytes(entry.serialSize)})`);
+
   inspectorContentElement.innerHTML = `
     <dl class="stats inspector-stats">
       <div><dt>Path</dt><dd>${escapeHtml(selected.path)}</dd></div>
       <div><dt>Size</dt><dd>${formatBytes(selected.size)}</dd></div>
-      <div><dt>Version</dt><dd>${formatPackageVersion(selected.summary)}</dd></div>
-      <div><dt>Names</dt><dd>${selected.summary.nameCount}</dd></div>
-      <div><dt>Name Table</dt><dd>@ ${selected.summary.nameOffset}</dd></div>
-      <div><dt>Imports</dt><dd>${selected.summary.importCount}</dd></div>
-      <div><dt>Import Table</dt><dd>@ ${selected.summary.importOffset}</dd></div>
-      <div><dt>Exports</dt><dd>${selected.summary.exportCount}</dd></div>
-      <div><dt>Export Table</dt><dd>@ ${selected.summary.exportOffset}</dd></div>
-      <div><dt>Flags</dt><dd>0x${selected.summary.packageFlags.toString(16).padStart(8, "0")}</dd></div>
+      <div><dt>Version</dt><dd>${formatPackageVersion(summary)}</dd></div>
+      <div><dt>Names</dt><dd>${summary.nameCount}</dd></div>
+      <div><dt>Name Table</dt><dd>@ ${summary.nameOffset}</dd></div>
+      <div><dt>Imports</dt><dd>${summary.importCount}</dd></div>
+      <div><dt>Import Table</dt><dd>@ ${summary.importOffset}</dd></div>
+      <div><dt>Exports</dt><dd>${summary.exportCount}</dd></div>
+      <div><dt>Export Table</dt><dd>@ ${summary.exportOffset}</dd></div>
+      <div><dt>Flags</dt><dd>0x${summary.packageFlags.toString(16).padStart(8, "0")}</dd></div>
     </dl>
+    ${renderListSection("Names", sampleNames)}
+    ${renderListSection("Imports", sampleImports)}
+    ${renderListSection("Exports", sampleExports)}
+  `;
+}
+
+function renderListSection(title: string, values: string[]): string {
+  if (values.length === 0) {
+    return "";
+  }
+
+  return `
+    <section class="sample-section">
+      <h3>${escapeHtml(title)}</h3>
+      <ol>
+        ${values.map((value) => `<li>${escapeHtml(value)}</li>`).join("")}
+      </ol>
+    </section>
   `;
 }
 
