@@ -2,10 +2,15 @@ import * as THREE from "three";
 
 type TriangleBuffer = Float32Array<ArrayBufferLike>;
 
+export interface TriangleLayer {
+  colors: TriangleBuffer;
+  positions: TriangleBuffer;
+}
+
 export interface TriangleLayers {
-  backdrop: TriangleBuffer;
-  invisible: TriangleBuffer;
-  solid: TriangleBuffer;
+  backdrop: TriangleLayer;
+  invisible: TriangleLayer;
+  solid: TriangleLayer;
 }
 
 export interface TriangleLayerVisibility {
@@ -86,23 +91,23 @@ export class ViewerScene {
     this.placeholder.visible = false;
     const frameTargets: THREE.Object3D[] = [];
 
-    if (visibility.solid && layers.solid.length > 0) {
+    if (visibility.solid && layers.solid.positions.length > 0) {
       const mesh = this.createTriangleMesh(layers.solid, 0x9fc3cf, 1);
-      const wire = this.createWireMesh(layers.solid, 0x263238);
+      const wire = this.createWireMesh(layers.solid.positions, 0x263238);
       this.content.add(mesh, wire);
       frameTargets.push(mesh);
     }
 
-    if (visibility.backdrop && layers.backdrop.length > 0) {
+    if (visibility.backdrop && layers.backdrop.positions.length > 0) {
       const backdrop = this.createTriangleMesh(layers.backdrop, 0x3d5363, 0.18);
-      const backdropWire = this.createWireMesh(layers.backdrop, 0x4e6c7c);
+      const backdropWire = this.createWireMesh(layers.backdrop.positions, 0x4e6c7c);
       this.content.add(backdrop, backdropWire);
       frameTargets.push(backdrop);
     }
 
-    if (visibility.invisible && layers.invisible.length > 0) {
+    if (visibility.invisible && layers.invisible.positions.length > 0) {
       const invisible = this.createTriangleMesh(layers.invisible, 0xc4926a, 0.24);
-      const invisibleWire = this.createWireMesh(layers.invisible, 0x8c6247);
+      const invisibleWire = this.createWireMesh(layers.invisible.positions, 0x8c6247);
       this.content.add(invisible, invisibleWire);
       frameTargets.push(invisible);
     }
@@ -170,9 +175,12 @@ export class ViewerScene {
     }
   }
 
-  private createTriangleMesh(triangles: TriangleBuffer, color: number, opacity: number): THREE.Mesh {
+  private createTriangleMesh(layer: TriangleLayer, color: number, opacity: number): THREE.Mesh {
     const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute("position", new THREE.BufferAttribute(triangles, 3));
+    geometry.setAttribute("position", new THREE.BufferAttribute(layer.positions, 3));
+    if (layer.colors.length === layer.positions.length) {
+      geometry.setAttribute("color", new THREE.BufferAttribute(layer.colors, 3));
+    }
     geometry.computeVertexNormals();
     geometry.computeBoundingSphere();
 
@@ -182,7 +190,8 @@ export class ViewerScene {
       opacity,
       roughness: 0.9,
       side: THREE.DoubleSide,
-      transparent: opacity < 1
+      transparent: opacity < 1,
+      vertexColors: layer.colors.length === layer.positions.length
     });
 
     return new THREE.Mesh(geometry, material);

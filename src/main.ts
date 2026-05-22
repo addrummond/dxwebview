@@ -221,9 +221,18 @@ function refreshSelectedGeometry(): void {
 
   viewerScene.showTriangles(
     {
-      backdrop: geometry.backdropTriangles,
-      invisible: geometry.invisibleTriangles,
-      solid: geometry.triangles
+      backdrop: {
+        colors: geometry.backdropTriangleColors,
+        positions: geometry.backdropTriangles
+      },
+      invisible: {
+        colors: geometry.invisibleTriangleColors,
+        positions: geometry.invisibleTriangles
+      },
+      solid: {
+        colors: geometry.triangleColors,
+        positions: geometry.triangles
+      }
     },
     state.surfaceVisibility
   );
@@ -318,6 +327,9 @@ function renderInspector(): void {
     .slice(0, 8)
     .map((entry) => `${entry.objectName} (${formatBytes(entry.serialSize)})`);
   const geometry = selected.geometry;
+  const sampleMaterials = geometry?.materials
+    .slice(0, 10)
+    .map((entry) => `${entry.textureName} (${entry.triangleCount} tris)`);
 
   inspectorContentElement.innerHTML = `
     <dl class="stats inspector-stats">
@@ -342,6 +354,7 @@ function renderInspector(): void {
     ${renderListSection("Names", sampleNames)}
     ${renderListSection("Imports", sampleImports)}
     ${renderListSection("Exports", sampleExports)}
+    ${renderListSection("Surface Textures", sampleMaterials ?? [])}
   `;
 }
 

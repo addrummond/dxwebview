@@ -33,6 +33,9 @@ describe("readPackageTables with Deus Ex GOTY data", () => {
     expect(geometry?.sourceExport).toBe("Model189");
     expect(geometry?.points.length).toBe(22433 * 3);
     expect(totalTriangleCoordinates(geometry)).toBe(37117 * 9);
+    expect(totalColorCoordinates(geometry)).toBe(totalTriangleCoordinates(geometry));
+    expect(totalMaterialTriangles(geometry)).toBe(37117);
+    expect(geometry?.materials.length).toBeGreaterThan(10);
   });
 
   it.skipIf(!existsSync(trainingPath))("triangulates the training map BSP model", async () => {
@@ -44,6 +47,9 @@ describe("readPackageTables with Deus Ex GOTY data", () => {
     expect(geometry?.sourceExport).toBe("Model36");
     expect(geometry?.points.length).toBe(16399 * 3);
     expect(totalTriangleCoordinates(geometry)).toBe(26021 * 9);
+    expect(totalColorCoordinates(geometry)).toBe(totalTriangleCoordinates(geometry));
+    expect(totalMaterialTriangles(geometry)).toBe(26021);
+    expect(geometry?.materials.length).toBeGreaterThan(10);
   });
 });
 
@@ -53,4 +59,16 @@ function totalTriangleCoordinates(geometry: ReturnType<typeof readLargestModelGe
     (geometry?.backdropTriangles.length ?? 0) +
     (geometry?.invisibleTriangles.length ?? 0)
   );
+}
+
+function totalColorCoordinates(geometry: ReturnType<typeof readLargestModelGeometry>): number {
+  return (
+    (geometry?.triangleColors.length ?? 0) +
+    (geometry?.backdropTriangleColors.length ?? 0) +
+    (geometry?.invisibleTriangleColors.length ?? 0)
+  );
+}
+
+function totalMaterialTriangles(geometry: ReturnType<typeof readLargestModelGeometry>): number {
+  return geometry?.materials.reduce((total, material) => total + material.triangleCount, 0) ?? 0;
 }
