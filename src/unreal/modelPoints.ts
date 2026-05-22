@@ -47,6 +47,7 @@ export function readLargestModelGeometry(
   skipVectorArray(reader);
   const points = readPointArray(reader);
   const nodes = readBspNodes(reader);
+  skipBspSurfaces(reader);
   const verts = readBspVerts(reader);
   const triangles = triangulateNodes(points, nodes, verts);
 
@@ -81,15 +82,41 @@ function readBspNodes(reader: BinaryReader): BspNode[] {
   const nodes: BspNode[] = [];
 
   for (let index = 0; index < nodeCount; index += 1) {
-    reader.skip(24);
-    const vertexPoolIndex = reader.readInt32();
-    reader.skip(26);
+    reader.skip(16);
+    reader.skip(8);
+    reader.readUint8();
+    const vertexPoolIndex = reader.readCompactIndex();
+    reader.readCompactIndex();
+    reader.readCompactIndex();
+    reader.readCompactIndex();
+    reader.readCompactIndex();
+    reader.readCompactIndex();
+    reader.readCompactIndex();
+    reader.readCompactIndex();
+    reader.readCompactIndex();
     const vertexCount = reader.readUint8();
-    reader.skip(9);
+    reader.skip(8);
     nodes.push({ vertexPoolIndex, vertexCount });
   }
 
   return nodes;
+}
+
+function skipBspSurfaces(reader: BinaryReader): void {
+  const surfaceCount = reader.readCompactIndex();
+
+  for (let index = 0; index < surfaceCount; index += 1) {
+    reader.readCompactIndex();
+    reader.readUint32();
+    reader.readCompactIndex();
+    reader.readCompactIndex();
+    reader.readCompactIndex();
+    reader.readCompactIndex();
+    reader.readCompactIndex();
+    reader.readCompactIndex();
+    reader.skip(4);
+    reader.readCompactIndex();
+  }
 }
 
 function readBspVerts(reader: BinaryReader): BspVert[] {

@@ -6,6 +6,7 @@ import { readPackageTables } from "./packageTables";
 
 const deusExRoot = process.env.DEUS_EX_GOTY_PATH ?? "/Users/alex/deus_ex_goty_51757";
 const unatcoIslandPath = `${deusExRoot}/Maps/01_NYC_UNATCOIsland.dx`;
+const trainingPath = `${deusExRoot}/Maps/00_Training.dx`;
 
 describe("readPackageTables with Deus Ex GOTY data", () => {
   it.skipIf(!existsSync(unatcoIslandPath))("reads a real Deus Ex map package", async () => {
@@ -31,6 +32,17 @@ describe("readPackageTables with Deus Ex GOTY data", () => {
 
     expect(geometry?.sourceExport).toBe("Model189");
     expect(geometry?.points.length).toBe(22433 * 3);
-    expect(geometry?.triangles.length).toBeGreaterThan(1000);
+    expect(geometry?.triangles.length).toBe(37117 * 9);
+  });
+
+  it.skipIf(!existsSync(trainingPath))("triangulates the training map BSP model", async () => {
+    const file = await readFile(trainingPath);
+    const buffer = file.buffer.slice(file.byteOffset, file.byteOffset + file.byteLength);
+    const tables = readPackageTables(buffer);
+    const geometry = readLargestModelGeometry(buffer, tables);
+
+    expect(geometry?.sourceExport).toBe("Model36");
+    expect(geometry?.points.length).toBe(16399 * 3);
+    expect(geometry?.triangles.length).toBe(26021 * 9);
   });
 });
