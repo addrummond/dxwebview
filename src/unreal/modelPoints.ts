@@ -145,7 +145,7 @@ function readBspSurfaces(reader: BinaryReader, tables: UnrealPackageTables): Bsp
     reader.readCompactIndex();
     reader.skip(4);
     reader.readCompactIndex();
-    surfaces.push({ polyFlags, textureName: resolveObjectName(textureIndex, tables) });
+    surfaces.push({ polyFlags, textureName: resolveObjectPath(textureIndex, tables) });
   }
 
   return surfaces;
@@ -341,4 +341,34 @@ function resolveObjectName(index: number, tables: UnrealPackageTables): string {
 
 function resolveImportName(entry: UnrealImportEntry | undefined): string {
   return entry?.objectName ?? "None";
+}
+
+function resolveObjectPath(index: number, tables: UnrealPackageTables): string {
+  if (index === 0) {
+    return "None";
+  }
+
+  if (index < 0) {
+    return resolveImportPath(tables.imports[-index - 1], tables);
+  }
+
+  return resolveExportPath(tables.exports[index - 1], tables);
+}
+
+function resolveImportPath(entry: UnrealImportEntry | undefined, tables: UnrealPackageTables): string {
+  if (!entry) {
+    return "None";
+  }
+
+  const outer = entry.outerIndex === 0 ? "" : resolveObjectPath(entry.outerIndex, tables);
+  return outer && outer !== "None" ? `${outer}.${entry.objectName}` : entry.objectName;
+}
+
+function resolveExportPath(entry: UnrealExportEntry | undefined, tables: UnrealPackageTables): string {
+  if (!entry) {
+    return "None";
+  }
+
+  const outer = entry.outerIndex === 0 ? "" : resolveObjectPath(entry.outerIndex, tables);
+  return outer && outer !== "None" ? `${outer}.${entry.objectName}` : entry.objectName;
 }
