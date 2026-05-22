@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
+import { readLargestModelPointCloud } from "./modelPoints";
 import { readPackageTables } from "./packageTables";
 
 const deusExRoot = process.env.DEUS_EX_GOTY_PATH ?? "/Users/alex/deus_ex_goty_51757";
@@ -22,5 +23,13 @@ describe("readPackageTables with Deus Ex GOTY data", () => {
       "None"
     ]);
     expect(tables.exports.slice(0, 25).some((entry) => !entry.objectName.startsWith("#"))).toBe(true);
+
+    const pointCloud = readLargestModelPointCloud(
+      file.buffer.slice(file.byteOffset, file.byteOffset + file.byteLength),
+      tables
+    );
+
+    expect(pointCloud?.sourceExport).toBe("Model189");
+    expect(pointCloud?.points.length).toBe(22433 * 3);
   });
 });

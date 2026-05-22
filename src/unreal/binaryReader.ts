@@ -55,6 +55,13 @@ export class BinaryReader {
     return value;
   }
 
+  readFloat32(): number {
+    this.ensure(4);
+    const value = this.view.getFloat32(this.offset, true);
+    this.offset += 4;
+    return value;
+  }
+
   readBytes(length: number): Uint8Array {
     this.ensure(length);
     const bytes = this.bytes.subarray(this.offset, this.offset + length);
@@ -110,6 +117,11 @@ export class BinaryReader {
     }
 
     return String.fromCharCode(...chars);
+  }
+
+  skip(length: number): void {
+    this.ensure(length);
+    this.offset += length;
   }
 
   private ensure(length: number): void {

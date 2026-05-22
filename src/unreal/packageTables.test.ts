@@ -40,12 +40,12 @@ function makePackageBuffer(): ArrayBuffer {
 
   writeCompact(importTable, 0);
   writeCompact(importTable, 1);
-  writeCompact(importTable, 0);
+  writeUint32(importTable, 0);
   writeCompact(importTable, 2);
 
   writeCompact(exportTable, -0);
   writeCompact(exportTable, 0);
-  writeCompact(exportTable, 0);
+  writeUint32(exportTable, 0);
   writeCompact(exportTable, 3);
   writeUint32(exportTable, 0x00000001);
   writeCompact(exportTable, 12);

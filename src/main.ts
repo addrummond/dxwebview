@@ -84,7 +84,7 @@ const viewportTitleElement = getElement<HTMLHeadingElement>("viewport-title");
 const inspectorContentElement = getElement<HTMLDivElement>("inspector-content");
 const viewportElement = getElement<HTMLDivElement>("viewport");
 
-new ViewerScene(viewportElement);
+const viewerScene = new ViewerScene(viewportElement);
 render();
 
 chooseFolderButton.addEventListener("click", () => {
@@ -116,6 +116,7 @@ async function chooseInstallFolder(): Promise<void> {
     const index = await buildPackageIndex(root);
     state.index = index;
     state.selectedMap = null;
+    viewerScene.showPlaceholder();
     setStatus(`Indexed ${index.packages.length} Unreal package files from ${index.rootName}.`);
     render();
   } catch (error) {
@@ -136,7 +137,15 @@ async function selectMap(entry: IndexedPackage): Promise<void> {
 
   try {
     state.selectedMap = await readIndexedPackageSummary(entry);
-    setStatus(`Loaded package summary for ${entry.path}.`);
+    if (state.selectedMap.pointCloud) {
+      viewerScene.showPointCloud(state.selectedMap.pointCloud.points);
+      setStatus(
+        `Loaded ${state.selectedMap.pointCloud.points.length / 3} points from ${state.selectedMap.pointCloud.sourceExport}.`
+      );
+    } else {
+      viewerScene.showPlaceholder();
+      setStatus(`Loaded package tables for ${entry.path}; no model point cloud found.`);
+    }
     render();
   } catch (error) {
     setError(error instanceof Error ? error.message : `Unable to read ${entry.path}.`);
@@ -237,6 +246,7 @@ function renderInspector(): void {
   const sampleExports = exports
     .slice(0, 8)
     .map((entry) => `${entry.objectName} (${formatBytes(entry.serialSize)})`);
+  const pointCloud = selected.pointCloud;
 
   inspectorContentElement.innerHTML = `
     <dl class="stats inspector-stats">
@@ -250,6 +260,9 @@ function renderInspector(): void {
       <div><dt>Exports</dt><dd>${summary.exportCount}</dd></div>
       <div><dt>Export Table</dt><dd>@ ${summary.exportOffset}</dd></div>
       <div><dt>Flags</dt><dd>0x${summary.packageFlags.toString(16).padStart(8, "0")}</dd></div>
+      <div><dt>Point Cloud</dt><dd>${
+        pointCloud ? `${pointCloud.points.length / 3} points from ${escapeHtml(pointCloud.sourceExport)}` : "None"
+      }</dd></div>
     </dl>
     ${renderListSection("Names", sampleNames)}
     ${renderListSection("Imports", sampleImports)}

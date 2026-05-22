@@ -13,7 +13,7 @@ export interface UnrealImportEntry {
   classPackage: string;
   classNameIndex: number;
   className: string;
-  packageIndex: number;
+  outerIndex: number;
   objectNameIndex: number;
   objectName: string;
 }
@@ -22,7 +22,7 @@ export interface UnrealExportEntry {
   index: number;
   classIndex: number;
   superIndex: number;
-  packageIndex: number;
+  outerIndex: number;
   objectNameIndex: number;
   objectName: string;
   objectFlags: number;
@@ -72,7 +72,7 @@ function readImportTable(
   return Array.from({ length: summary.importCount }, (_, index) => {
     const classPackageIndex = reader.readCompactIndex();
     const classNameIndex = reader.readCompactIndex();
-    const packageIndex = reader.readCompactIndex();
+    const outerIndex = reader.readInt32();
     const objectNameIndex = reader.readCompactIndex();
 
     return {
@@ -81,7 +81,7 @@ function readImportTable(
       classPackage: resolveName(names, classPackageIndex),
       classNameIndex,
       className: resolveName(names, classNameIndex),
-      packageIndex,
+      outerIndex,
       objectNameIndex,
       objectName: resolveName(names, objectNameIndex)
     };
@@ -98,7 +98,7 @@ function readExportTable(
   return Array.from({ length: summary.exportCount }, (_, index) => {
     const classIndex = reader.readCompactIndex();
     const superIndex = reader.readCompactIndex();
-    const packageIndex = reader.readCompactIndex();
+    const outerIndex = reader.readInt32();
     const objectNameIndex = reader.readCompactIndex();
     const objectFlags = reader.readUint32();
     const serialSize = reader.readCompactIndex();
@@ -108,7 +108,7 @@ function readExportTable(
       index,
       classIndex,
       superIndex,
-      packageIndex,
+      outerIndex,
       objectNameIndex,
       objectName: resolveName(names, objectNameIndex),
       objectFlags,

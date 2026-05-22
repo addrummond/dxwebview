@@ -6,6 +6,8 @@ export class ViewerScene {
   private readonly camera: THREE.PerspectiveCamera;
   private readonly container: HTMLElement;
   private readonly resizeObserver: ResizeObserver;
+  private readonly content = new THREE.Group();
+  private readonly placeholder: THREE.Mesh;
   private animationFrameId = 0;
 
   constructor(container: HTMLElement) {
@@ -21,12 +23,39 @@ export class ViewerScene {
     this.camera.lookAt(0, 0, 0);
 
     this.container.append(this.renderer.domElement);
+    this.scene.add(this.content);
     this.resizeObserver = new ResizeObserver(() => this.resize());
     this.resizeObserver.observe(this.container);
 
     this.addBaseScene();
+    this.placeholder = this.addPlaceholderCube();
     this.resize();
     this.animate();
+  }
+
+  showPointCloud(points: Float32Array): void {
+    this.clearContent();
+    this.placeholder.visible = false;
+
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute("position", new THREE.BufferAttribute(points, 3));
+    geometry.computeBoundingSphere();
+
+    const material = new THREE.PointsMaterial({
+      color: 0xb6d7e4,
+      size: 14,
+      sizeAttenuation: false
+    });
+    const cloud = new THREE.Points(geometry, material);
+    this.content.add(cloud);
+    this.frameObject(cloud);
+  }
+
+  showPlaceholder(): void {
+    this.clearContent();
+    this.placeholder.visible = true;
+    this.camera.position.set(4, 3, 6);
+    this.camera.lookAt(0, 0, 0);
   }
 
   dispose(): void {
@@ -44,6 +73,15 @@ export class ViewerScene {
     axes.position.y = 0.01;
     this.scene.add(axes);
 
+    const key = new THREE.DirectionalLight(0xf6efe2, 2.2);
+    key.position.set(4, 8, 5);
+    this.scene.add(key);
+
+    const fill = new THREE.HemisphereLight(0x9fc8d8, 0x3a332c, 1.4);
+    this.scene.add(fill);
+  }
+
+  private addPlaceholderCube(): THREE.Mesh {
     const geometry = new THREE.BoxGeometry(1.6, 1.6, 1.6);
     const material = new THREE.MeshStandardMaterial({
       color: 0x8fb7c9,
@@ -54,13 +92,34 @@ export class ViewerScene {
     cube.position.y = 1;
     cube.name = "placeholder-world";
     this.scene.add(cube);
+    return cube;
+  }
 
-    const key = new THREE.DirectionalLight(0xf6efe2, 2.2);
-    key.position.set(4, 8, 5);
-    this.scene.add(key);
+  private clearContent(): void {
+    for (const child of [...this.content.children]) {
+      this.content.remove(child);
+      if (child instanceof THREE.Points || child instanceof THREE.Mesh) {
+        child.geometry.dispose();
+        if (Array.isArray(child.material)) {
+          child.material.forEach((material) => material.dispose());
+        } else {
+          child.material.dispose();
+        }
+      }
+    }
+  }
 
-    const fill = new THREE.HemisphereLight(0x9fc8d8, 0x3a332c, 1.4);
-    this.scene.add(fill);
+  private frameObject(object: THREE.Object3D): void {
+    const box = new THREE.Box3().setFromObject(object);
+    const center = box.getCenter(new THREE.Vector3());
+    const size = box.getSize(new THREE.Vector3());
+    const radius = Math.max(size.x, size.y, size.z, 1);
+
+    this.camera.position.set(center.x + radius * 0.55, center.y + radius * 0.35, center.z + radius * 0.9);
+    this.camera.near = Math.max(radius / 10000, 1);
+    this.camera.far = Math.max(radius * 8, 1000);
+    this.camera.lookAt(center);
+    this.camera.updateProjectionMatrix();
   }
 
   private resize(): void {
@@ -76,9 +135,8 @@ export class ViewerScene {
   private animate = (): void => {
     this.animationFrameId = requestAnimationFrame(this.animate);
 
-    const cube = this.scene.getObjectByName("placeholder-world");
-    if (cube) {
-      cube.rotation.y += 0.004;
+    if (this.placeholder.visible) {
+      this.placeholder.rotation.y += 0.004;
     }
 
     this.renderer.render(this.scene, this.camera);
