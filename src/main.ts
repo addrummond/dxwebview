@@ -1,5 +1,5 @@
 import "./styles.css";
-import { ViewerScene } from "./render/ViewerScene";
+import { ViewerScene, type TriangleLayerVisibility } from "./render/ViewerScene";
 import {
   buildPackageIndex,
   formatBytes,
@@ -13,6 +13,7 @@ import { formatPackageVersion } from "./unreal/packageSummary";
 interface AppState {
   index: PackageIndex | null;
   selectedMap: IndexedPackageWithSummary | null;
+  surfaceVisibility: TriangleLayerVisibility;
   status: string;
   error: string | null;
 }
@@ -20,6 +21,11 @@ interface AppState {
 const state: AppState = {
   index: null,
   selectedMap: null,
+  surfaceVisibility: {
+    backdrop: false,
+    invisible: false,
+    solid: true
+  },
   status: "Choose an extracted Deus Ex GOTY folder to begin.",
   error: null
 };
@@ -58,9 +64,10 @@ app.innerHTML = `
           <h2 id="viewport-title">No map loaded</h2>
         </div>
         <div class="viewport-actions">
-          <button type="button" disabled>Geometry</button>
-          <button type="button" disabled>Actors</button>
-          <button type="button" disabled>Lights</button>
+          <label class="toggle"><input id="toggle-solid" type="checkbox" /> Geometry</label>
+          <label class="toggle"><input id="toggle-backdrop" type="checkbox" /> Backdrops</label>
+          <label class="toggle"><input id="toggle-invisible" type="checkbox" /> Invisible</label>
+          <button id="reset-view" type="button">Reset</button>
         </div>
       </div>
       <div class="viewport" id="viewport"></div>
@@ -83,12 +90,35 @@ const mapListElement = getElement<HTMLDivElement>("map-list");
 const viewportTitleElement = getElement<HTMLHeadingElement>("viewport-title");
 const inspectorContentElement = getElement<HTMLDivElement>("inspector-content");
 const viewportElement = getElement<HTMLDivElement>("viewport");
+const solidToggleElement = getElement<HTMLInputElement>("toggle-solid");
+const backdropToggleElement = getElement<HTMLInputElement>("toggle-backdrop");
+const invisibleToggleElement = getElement<HTMLInputElement>("toggle-invisible");
+const resetViewButton = getElement<HTMLButtonElement>("reset-view");
 
 const viewerScene = new ViewerScene(viewportElement);
 render();
 
 chooseFolderButton.addEventListener("click", () => {
   void chooseInstallFolder();
+});
+
+solidToggleElement.addEventListener("change", () => {
+  state.surfaceVisibility.solid = solidToggleElement.checked;
+  refreshSelectedGeometry();
+});
+
+backdropToggleElement.addEventListener("change", () => {
+  state.surfaceVisibility.backdrop = backdropToggleElement.checked;
+  refreshSelectedGeometry();
+});
+
+invisibleToggleElement.addEventListener("change", () => {
+  state.surfaceVisibility.invisible = invisibleToggleElement.checked;
+  refreshSelectedGeometry();
+});
+
+resetViewButton.addEventListener("click", () => {
+  viewerScene.resetView();
 });
 
 function getElement<T extends HTMLElement>(id: string): T {
@@ -137,14 +167,9 @@ async function selectMap(entry: IndexedPackage): Promise<void> {
 
   try {
     state.selectedMap = await readIndexedPackageSummary(entry);
-    if (state.selectedMap.geometry && state.selectedMap.geometry.triangles.length > 0) {
-      viewerScene.showTriangles(
-        state.selectedMap.geometry.triangles,
-        state.selectedMap.geometry.backdropTriangles
-      );
-      setStatus(
-        `Rendered ${state.selectedMap.geometry.triangles.length / 9} visible triangles from ${state.selectedMap.geometry.sourceExport}.`
-      );
+    if (state.selectedMap.geometry && totalTriangleCount(state.selectedMap.geometry) > 0) {
+      state.surfaceVisibility = defaultSurfaceVisibility(state.selectedMap.geometry);
+      refreshSelectedGeometry();
     } else if (state.selectedMap.geometry) {
       viewerScene.showPointCloud(state.selectedMap.geometry.points);
       setStatus(
@@ -182,7 +207,31 @@ function render(): void {
 
   renderStats();
   renderMapList();
+  renderViewportControls();
   renderInspector();
+}
+
+function refreshSelectedGeometry(): void {
+  const geometry = state.selectedMap?.geometry;
+
+  if (!geometry) {
+    render();
+    return;
+  }
+
+  viewerScene.showTriangles(
+    {
+      backdrop: geometry.backdropTriangles,
+      invisible: geometry.invisibleTriangles,
+      solid: geometry.triangles
+    },
+    state.surfaceVisibility
+  );
+  setStatus(
+    `Rendered ${displayedTriangleCount(geometry, state.surfaceVisibility)} of ${totalTriangleCount(
+      geometry
+    )} BSP triangles from ${geometry.sourceExport}.`
+  );
 }
 
 function renderStats(): void {
@@ -234,6 +283,20 @@ function renderMapList(): void {
     });
     mapListElement.append(button);
   }
+}
+
+function renderViewportControls(): void {
+  const geometry = state.selectedMap?.geometry;
+  const hasGeometry = Boolean(geometry && totalTriangleCount(geometry) > 0);
+
+  solidToggleElement.checked = state.surfaceVisibility.solid;
+  backdropToggleElement.checked = state.surfaceVisibility.backdrop;
+  invisibleToggleElement.checked = state.surfaceVisibility.invisible;
+
+  solidToggleElement.disabled = !hasGeometry || geometry?.triangles.length === 0;
+  backdropToggleElement.disabled = !hasGeometry || geometry?.backdropTriangles.length === 0;
+  invisibleToggleElement.disabled = !hasGeometry || geometry?.invisibleTriangles.length === 0;
+  resetViewButton.disabled = !hasGeometry;
 }
 
 function renderInspector(): void {
@@ -295,6 +358,34 @@ function renderListSection(title: string, values: string[]): string {
       </ol>
     </section>
   `;
+}
+
+function defaultSurfaceVisibility(geometry: NonNullable<IndexedPackageWithSummary["geometry"]>): TriangleLayerVisibility {
+  const solid = geometry.triangles.length > 0;
+  const backdrop = !solid && geometry.backdropTriangles.length > 0;
+
+  return {
+    backdrop,
+    invisible: !solid && !backdrop && geometry.invisibleTriangles.length > 0,
+    solid
+  };
+}
+
+function totalTriangleCount(geometry: NonNullable<IndexedPackageWithSummary["geometry"]>): number {
+  return (
+    geometry.triangles.length / 9 + geometry.backdropTriangles.length / 9 + geometry.invisibleTriangles.length / 9
+  );
+}
+
+function displayedTriangleCount(
+  geometry: NonNullable<IndexedPackageWithSummary["geometry"]>,
+  visibility: TriangleLayerVisibility
+): number {
+  return (
+    (visibility.solid ? geometry.triangles.length / 9 : 0) +
+    (visibility.backdrop ? geometry.backdropTriangles.length / 9 : 0) +
+    (visibility.invisible ? geometry.invisibleTriangles.length / 9 : 0)
+  );
 }
 
 function escapeHtml(value: string): string {

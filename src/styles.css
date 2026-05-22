@@ -236,7 +236,32 @@ h2 {
 .viewport-actions {
   display: flex;
   flex-shrink: 0;
+  align-items: center;
   gap: 8px;
+}
+
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 0 8px;
+  border: 1px solid #3a4249;
+  border-radius: 6px;
+  color: #d5dadd;
+  background: #22282d;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.toggle:has(input:disabled) {
+  color: #7b858d;
+}
+
+.toggle input {
+  width: 14px;
+  height: 14px;
+  accent-color: #7aa5b3;
 }
 
 .viewport {
