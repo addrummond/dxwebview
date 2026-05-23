@@ -198,7 +198,7 @@ function selectActor(
   actorPath: string,
   options: { focusViewport: boolean; scrollInspector: boolean }
 ): void {
-  const actor = state.selectedMap?.actorAnnotations.find((annotation) => annotation.path === actorPath);
+  const actor = displayActorAnnotations(state.selectedMap).find((annotation) => annotation.path === actorPath);
 
   if (!actor) {
     return;
@@ -374,6 +374,7 @@ function refreshSelectedGeometry(options: { frameView?: boolean } = {}): void {
     render();
     return;
   }
+  const displayActors = displayActorAnnotations(selectedMap);
 
   viewerScene.showTriangles(
     {
@@ -398,9 +399,9 @@ function refreshSelectedGeometry(options: { frameView?: boolean } = {}): void {
     },
     state.surfaceVisibility,
     selectedMap.textures,
-    state.actorAnnotationsVisible ? selectedMap.actorAnnotations : [],
+    state.actorAnnotationsVisible ? displayActors : [],
     state.selectedActorPath,
-    state.actorAnnotationsVisible ? actorBrushGeometries(selectedMap) : [],
+    state.actorAnnotationsVisible ? actorBrushGeometries(selectedMap, displayActors) : [],
     state.nonVisibleActorAnnotationsVisible,
     frameView
   );
@@ -408,17 +409,26 @@ function refreshSelectedGeometry(options: { frameView?: boolean } = {}): void {
     `Rendered ${displayedTriangleCount(geometry, state.surfaceVisibility)} of ${totalTriangleCount(
       geometry
     )} BSP triangles from ${geometry.sourceExport} with ${selectedMap.textures.size} decoded textures and ${
-      selectedMap.actorAnnotations.length
+      displayActors.length
     } actor annotations.`
   );
 }
 
-function actorBrushGeometries(selectedMap: IndexedPackageWithSummary): SceneBrushGeometry[] {
+function displayActorAnnotations(
+  selectedMap: IndexedPackageWithSummary | null | undefined
+): UnrealActorAnnotation[] {
+  return selectedMap?.actorAnnotations.filter((actor) => !isCsgConstructionBrush(actor)) ?? [];
+}
+
+function actorBrushGeometries(
+  selectedMap: IndexedPackageWithSummary,
+  actors: UnrealActorAnnotation[]
+): SceneBrushGeometry[] {
   const geometries: SceneBrushGeometry[] = [];
 
-  for (const actor of selectedMap.actorAnnotations) {
+  for (const actor of actors) {
     const geometry = selectedMap.brushGeometries.get(actor.path);
-    if (!geometry || isCsgConstructionBrush(actor)) {
+    if (!geometry) {
       continue;
     }
     geometries.push({
@@ -506,6 +516,7 @@ function renderMapList(): void {
 function renderViewportControls(): void {
   const geometry = state.selectedMap?.geometry;
   const hasGeometry = Boolean(geometry && totalTriangleCount(geometry) > 0);
+  const displayActors = displayActorAnnotations(state.selectedMap);
 
   solidToggleElement.checked = state.surfaceVisibility.solid;
   backdropToggleElement.checked = state.surfaceVisibility.backdrop;
@@ -516,9 +527,9 @@ function renderViewportControls(): void {
   solidToggleElement.disabled = !hasGeometry || geometry?.triangles.length === 0;
   backdropToggleElement.disabled = !hasGeometry || geometry?.backdropTriangles.length === 0;
   invisibleToggleElement.disabled = !hasGeometry || geometry?.invisibleTriangles.length === 0;
-  actorsToggleElement.disabled = !state.selectedMap || state.selectedMap.actorAnnotations.length === 0;
+  actorsToggleElement.disabled = displayActors.length === 0;
   nonVisibleActorsToggleElement.disabled =
-    !state.actorAnnotationsVisible || !state.selectedMap || state.selectedMap.actorAnnotations.length === 0;
+    !state.actorAnnotationsVisible || displayActors.length === 0;
   resetViewButton.disabled = !hasGeometry;
 }
 
@@ -541,7 +552,8 @@ function renderInspector(): void {
     .slice(0, 8)
     .map((entry) => `${entry.objectName} (${formatBytes(entry.serialSize)})`);
   const geometry = selected.geometry;
-  const actorCategoryCounts = countActorCategories(selected.actorAnnotations);
+  const displayActors = displayActorAnnotations(selected);
+  const actorCategoryCounts = countActorCategories(displayActors);
   const sampleMaterials = geometry?.materials
     .slice(0, 10)
     .map((entry) => `${entry.textureName} (${entry.triangleCount} tris)`);
@@ -565,10 +577,10 @@ function renderInspector(): void {
             } invisible triangles from ${escapeHtml(geometry.sourceExport)}`
           : "None"
       }</dd></div>
-      <div><dt>Actors</dt><dd>${selected.actorAnnotations.length}</dd></div>
+      <div><dt>Actors</dt><dd>${displayActors.length}</dd></div>
     </dl>
     ${renderActorCategoryCounts(actorCategoryCounts)}
-    ${renderActorAnnotations(selected.actorAnnotations)}
+    ${renderActorAnnotations(displayActors)}
     ${renderListSection("Names", sampleNames)}
     ${renderListSection("Imports", sampleImports)}
     ${renderListSection("Exports", sampleExports)}
