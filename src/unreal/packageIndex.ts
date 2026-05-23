@@ -1,3 +1,4 @@
+import { readActorAnnotations, type UnrealActorAnnotation } from "./actorAnnotations";
 import { readPackageTables, type UnrealPackageTables } from "./packageTables";
 import { readLargestModelGeometry, type UnrealModelGeometry } from "./modelPoints";
 import { readTextureImages, type UnrealTextureImage } from "./textureDecoder";
@@ -25,6 +26,7 @@ export interface PackageIndex {
 }
 
 export interface IndexedPackageWithSummary extends IndexedPackage {
+  actorAnnotations: UnrealActorAnnotation[];
   tables: UnrealPackageTables;
   geometry: UnrealModelGeometry | null;
   textures: Map<string, UnrealTextureImage>;
@@ -100,9 +102,11 @@ export async function readIndexedPackageSummary(
   const buffer = await entry.file.arrayBuffer();
   const tables = readPackageTables(buffer);
   const geometry = readLargestModelGeometry(buffer, tables);
+  const actorAnnotations = readActorAnnotations(buffer, tables);
 
   return {
     ...entry,
+    actorAnnotations,
     tables,
     geometry,
     textures: geometry ? await loadGeometryTextures(entry, buffer, tables, geometry, index) : new Map()

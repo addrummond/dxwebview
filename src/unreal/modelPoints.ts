@@ -1,5 +1,6 @@
 import { BinaryReader } from "./binaryReader";
-import type { UnrealExportEntry, UnrealImportEntry, UnrealPackageTables } from "./packageTables";
+import { resolveObjectName, resolveObjectPath } from "./objectReferences";
+import type { UnrealExportEntry, UnrealPackageTables } from "./packageTables";
 
 export interface UnrealModelGeometry {
   sourceExport: string;
@@ -461,50 +462,4 @@ function hslToRgb(hue: number, saturation: number, lightness: number): RgbColor 
     g: g + m,
     b: b + m
   };
-}
-
-function resolveObjectName(index: number, tables: UnrealPackageTables): string {
-  if (index === 0) {
-    return "None";
-  }
-
-  if (index < 0) {
-    return resolveImportName(tables.imports[-index - 1]);
-  }
-
-  return tables.exports[index - 1]?.objectName ?? `#${index}`;
-}
-
-function resolveImportName(entry: UnrealImportEntry | undefined): string {
-  return entry?.objectName ?? "None";
-}
-
-function resolveObjectPath(index: number, tables: UnrealPackageTables): string {
-  if (index === 0) {
-    return "None";
-  }
-
-  if (index < 0) {
-    return resolveImportPath(tables.imports[-index - 1], tables);
-  }
-
-  return resolveExportPath(tables.exports[index - 1], tables);
-}
-
-function resolveImportPath(entry: UnrealImportEntry | undefined, tables: UnrealPackageTables): string {
-  if (!entry) {
-    return "None";
-  }
-
-  const outer = entry.outerIndex === 0 ? "" : resolveObjectPath(entry.outerIndex, tables);
-  return outer && outer !== "None" ? `${outer}.${entry.objectName}` : entry.objectName;
-}
-
-function resolveExportPath(entry: UnrealExportEntry | undefined, tables: UnrealPackageTables): string {
-  if (!entry) {
-    return "None";
-  }
-
-  const outer = entry.outerIndex === 0 ? "" : resolveObjectPath(entry.outerIndex, tables);
-  return outer && outer !== "None" ? `${outer}.${entry.objectName}` : entry.objectName;
 }

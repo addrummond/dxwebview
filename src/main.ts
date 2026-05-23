@@ -9,8 +9,10 @@ import {
   type PackageIndex
 } from "./unreal/packageIndex";
 import { formatPackageVersion } from "./unreal/packageSummary";
+import type { UnrealActorAnnotation, UnrealActorCategory } from "./unreal/actorAnnotations";
 
 interface AppState {
+  actorAnnotationsVisible: boolean;
   index: PackageIndex | null;
   selectedMap: IndexedPackageWithSummary | null;
   surfaceVisibility: TriangleLayerVisibility;
@@ -19,6 +21,7 @@ interface AppState {
 }
 
 const state: AppState = {
+  actorAnnotationsVisible: true,
   index: null,
   selectedMap: null,
   surfaceVisibility: {
@@ -67,6 +70,7 @@ app.innerHTML = `
           <label class="toggle"><input id="toggle-solid" type="checkbox" /> Geometry</label>
           <label class="toggle"><input id="toggle-backdrop" type="checkbox" /> Backdrops</label>
           <label class="toggle"><input id="toggle-invisible" type="checkbox" /> Invisible</label>
+          <label class="toggle"><input id="toggle-actors" type="checkbox" /> Actors</label>
           <button id="reset-view" type="button">Reset</button>
         </div>
       </div>
@@ -93,6 +97,7 @@ const viewportElement = getElement<HTMLDivElement>("viewport");
 const solidToggleElement = getElement<HTMLInputElement>("toggle-solid");
 const backdropToggleElement = getElement<HTMLInputElement>("toggle-backdrop");
 const invisibleToggleElement = getElement<HTMLInputElement>("toggle-invisible");
+const actorsToggleElement = getElement<HTMLInputElement>("toggle-actors");
 const resetViewButton = getElement<HTMLButtonElement>("reset-view");
 
 const viewerScene = new ViewerScene(viewportElement);
@@ -114,6 +119,11 @@ backdropToggleElement.addEventListener("change", () => {
 
 invisibleToggleElement.addEventListener("change", () => {
   state.surfaceVisibility.invisible = invisibleToggleElement.checked;
+  refreshSelectedGeometry();
+});
+
+actorsToggleElement.addEventListener("change", () => {
+  state.actorAnnotationsVisible = actorsToggleElement.checked;
   refreshSelectedGeometry();
 });
 
@@ -242,12 +252,15 @@ function refreshSelectedGeometry(): void {
       }
     },
     state.surfaceVisibility,
-    selectedMap.textures
+    selectedMap.textures,
+    state.actorAnnotationsVisible ? selectedMap.actorAnnotations : []
   );
   setStatus(
     `Rendered ${displayedTriangleCount(geometry, state.surfaceVisibility)} of ${totalTriangleCount(
       geometry
-    )} BSP triangles from ${geometry.sourceExport} with ${selectedMap.textures.size} decoded textures.`
+    )} BSP triangles from ${geometry.sourceExport} with ${selectedMap.textures.size} decoded textures and ${
+      selectedMap.actorAnnotations.length
+    } actor annotations.`
   );
 }
 
@@ -309,10 +322,12 @@ function renderViewportControls(): void {
   solidToggleElement.checked = state.surfaceVisibility.solid;
   backdropToggleElement.checked = state.surfaceVisibility.backdrop;
   invisibleToggleElement.checked = state.surfaceVisibility.invisible;
+  actorsToggleElement.checked = state.actorAnnotationsVisible;
 
   solidToggleElement.disabled = !hasGeometry || geometry?.triangles.length === 0;
   backdropToggleElement.disabled = !hasGeometry || geometry?.backdropTriangles.length === 0;
   invisibleToggleElement.disabled = !hasGeometry || geometry?.invisibleTriangles.length === 0;
+  actorsToggleElement.disabled = !state.selectedMap || state.selectedMap.actorAnnotations.length === 0;
   resetViewButton.disabled = !hasGeometry;
 }
 
@@ -335,6 +350,7 @@ function renderInspector(): void {
     .slice(0, 8)
     .map((entry) => `${entry.objectName} (${formatBytes(entry.serialSize)})`);
   const geometry = selected.geometry;
+  const actorCategoryCounts = countActorCategories(selected.actorAnnotations);
   const sampleMaterials = geometry?.materials
     .slice(0, 10)
     .map((entry) => `${entry.textureName} (${entry.triangleCount} tris)`);
@@ -358,11 +374,82 @@ function renderInspector(): void {
             } invisible triangles from ${escapeHtml(geometry.sourceExport)}`
           : "None"
       }</dd></div>
+      <div><dt>Actors</dt><dd>${selected.actorAnnotations.length}</dd></div>
     </dl>
+    ${renderActorCategoryCounts(actorCategoryCounts)}
+    ${renderActorAnnotations(selected.actorAnnotations)}
     ${renderListSection("Names", sampleNames)}
     ${renderListSection("Imports", sampleImports)}
     ${renderListSection("Exports", sampleExports)}
     ${renderListSection("Surface Textures", sampleMaterials ?? [])}
+  `;
+}
+
+function countActorCategories(annotations: UnrealActorAnnotation[]): Map<UnrealActorCategory, number> {
+  const counts = new Map<UnrealActorCategory, number>();
+
+  for (const annotation of annotations) {
+    counts.set(annotation.category, (counts.get(annotation.category) ?? 0) + 1);
+  }
+
+  return counts;
+}
+
+function renderActorCategoryCounts(counts: Map<UnrealActorCategory, number>): string {
+  if (counts.size === 0) {
+    return "";
+  }
+
+  return `
+    <section class="sample-section">
+      <h3>Actor Categories</h3>
+      <div class="category-grid">
+        ${[...counts]
+          .map(
+            ([category, count]) => `
+              <span class="category-pill" data-category="${escapeHtml(category)}">
+                <span>${escapeHtml(category)}</span>
+                <strong>${count}</strong>
+              </span>
+            `
+          )
+          .join("")}
+      </div>
+    </section>
+  `;
+}
+
+function renderActorAnnotations(annotations: UnrealActorAnnotation[]): string {
+  if (annotations.length === 0) {
+    return "";
+  }
+
+  return `
+    <section class="sample-section">
+      <h3>Actor Annotations</h3>
+      <ol class="actor-list">
+        ${annotations
+          .slice(0, 60)
+          .map(
+            (actor) => `
+              <li>
+                <span class="actor-title">
+                  <span class="actor-dot" data-category="${escapeHtml(actor.category)}"></span>
+                  ${escapeHtml(actor.objectName)}
+                </span>
+                <span class="actor-meta">${escapeHtml(actor.category)} · ${escapeHtml(actor.classPath)}</span>
+                <span class="actor-meta">${formatVector(actor.location)}</span>
+              </li>
+            `
+          )
+          .join("")}
+      </ol>
+      ${
+        annotations.length > 60
+          ? `<p class="muted actor-overflow">Showing 60 of ${annotations.length} placed actors.</p>`
+          : ""
+      }
+    </section>
   `;
 }
 
@@ -426,4 +513,12 @@ function escapeHtml(value: string): string {
         return character;
     }
   });
+}
+
+function formatVector(vector: { x: number; y: number; z: number }): string {
+  return `x ${formatCoordinate(vector.x)}, y ${formatCoordinate(vector.y)}, z ${formatCoordinate(vector.z)}`;
+}
+
+function formatCoordinate(value: number): string {
+  return value.toFixed(Math.abs(value) >= 100 ? 0 : 1);
 }

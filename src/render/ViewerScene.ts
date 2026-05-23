@@ -30,6 +30,18 @@ export interface TriangleLayerVisibility {
   solid: boolean;
 }
 
+export interface SceneActorAnnotation {
+  category: string;
+  className: string;
+  collisionRadius: number | null;
+  location: {
+    x: number;
+    y: number;
+    z: number;
+  };
+  objectName: string;
+}
+
 export class ViewerScene {
   private readonly renderer: THREE.WebGLRenderer;
   private readonly scene: THREE.Scene;
@@ -101,7 +113,8 @@ export class ViewerScene {
   showTriangles(
     layers: TriangleLayers,
     visibility: TriangleLayerVisibility,
-    textures = new Map<string, UnrealTextureImage>()
+    textures = new Map<string, UnrealTextureImage>(),
+    actorAnnotations: SceneActorAnnotation[] = []
   ): void {
     this.clearContent();
     this.placeholder.visible = false;
@@ -126,6 +139,10 @@ export class ViewerScene {
       const invisibleWire = this.createWireMesh(layers.invisible.positions, 0x8c6247);
       this.content.add(invisible, invisibleWire);
       frameTargets.push(invisible);
+    }
+
+    if (actorAnnotations.length > 0) {
+      this.content.add(this.createActorMarkerGroup(actorAnnotations));
     }
 
     this.frameTargets = frameTargets;
@@ -303,6 +320,28 @@ export class ViewerScene {
     });
 
     return new THREE.Mesh(geometry, material);
+  }
+
+  private createActorMarkerGroup(annotations: SceneActorAnnotation[]): THREE.Group {
+    const group = new THREE.Group();
+    group.name = "actor-annotations";
+
+    for (const annotation of annotations) {
+      const radius = THREE.MathUtils.clamp((annotation.collisionRadius ?? 32) * 0.35, 8, 28);
+      const geometry = new THREE.SphereGeometry(radius, 12, 8);
+      const material = new THREE.MeshBasicMaterial({
+        color: actorCategoryColor(annotation.category),
+        depthTest: false,
+        opacity: 0.88,
+        transparent: true
+      });
+      const marker = new THREE.Mesh(geometry, material);
+      marker.name = `${annotation.category}: ${annotation.className}.${annotation.objectName}`;
+      marker.position.set(annotation.location.x, annotation.location.y, annotation.location.z);
+      group.add(marker);
+    }
+
+    return group;
   }
 
   private addInputListeners(): void {
@@ -606,4 +645,33 @@ function opacityForRenderMode(opacity: number, renderMode: TriangleMaterialSpan[
   }
 
   return opacity;
+}
+
+function actorCategoryColor(category: string): number {
+  switch (category) {
+    case "Ammo":
+      return 0xf0c84b;
+    case "Audio":
+      return 0xa184e6;
+    case "Character":
+      return 0x5fb4ff;
+    case "Decoration":
+      return 0xa9b0b8;
+    case "Item":
+      return 0x66d182;
+    case "Key":
+      return 0xf29662;
+    case "Light":
+      return 0xfff1a8;
+    case "Mover":
+      return 0x4ec9c2;
+    case "Navigation":
+      return 0x6c7480;
+    case "Trigger":
+      return 0xd87aff;
+    case "Weapon":
+      return 0xff6d70;
+    default:
+      return 0xe7ecef;
+  }
 }
