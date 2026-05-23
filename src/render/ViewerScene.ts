@@ -6,6 +6,12 @@ type TriangleBuffer = Float32Array<ArrayBufferLike>;
 const MOVEMENT_RAMP_SECONDS = 1;
 const VIEW_CHANGE_MIN_INTERVAL_MS = 500;
 
+interface BrushCirclePickTarget {
+  center: THREE.Vector3;
+  path: string;
+  radius: number;
+}
+
 export interface TriangleLayer {
   colors: TriangleBuffer;
   materialSpans: TriangleMaterialSpan[];
@@ -93,6 +99,8 @@ export class ViewerScene {
   private readonly upVector = new THREE.Vector3(0, 1, 0);
   private readonly projectedMarkerPosition = new THREE.Vector3();
   private readonly markerWorldPosition = new THREE.Vector3();
+  private readonly markerRadiusWorldPosition = new THREE.Vector3();
+  private readonly projectedMarkerRadiusPosition = new THREE.Vector3();
   private readonly occlusionRaycaster = new THREE.Raycaster();
   private readonly brushMatrix = new THREE.Matrix4();
   private readonly brushQuaternion = new THREE.Quaternion();
@@ -101,6 +109,8 @@ export class ViewerScene {
   private readonly triangleB = new THREE.Vector3();
   private readonly triangleC = new THREE.Vector3();
   private readonly triangleDirection = new THREE.Vector3();
+  private brushActorPaths = new Set<string>();
+  private brushCirclePickTargets: BrushCirclePickTarget[] = [];
   private actorMarkerTargets: THREE.Object3D[] = [];
   private occluderTargets: THREE.Object3D[] = [];
   private frameTargets: THREE.Object3D[] = [];
@@ -173,6 +183,7 @@ export class ViewerScene {
     this.clearContent();
     this.placeholder.visible = false;
     this.occluderTargets = [];
+    this.brushActorPaths = new Set(brushGeometries.map((brushGeometry) => brushGeometry.actor.path));
     const frameTargets: THREE.Object3D[] = [];
 
     if (visibility.solid && layers.solid.positions.length > 0) {
@@ -325,6 +336,8 @@ export class ViewerScene {
   }
 
   private clearContent(): void {
+    this.brushActorPaths.clear();
+    this.brushCirclePickTargets = [];
     this.actorMarkerTargets = [];
     for (const child of [...this.content.children]) {
       this.content.remove(child);
@@ -482,6 +495,13 @@ export class ViewerScene {
       marker.renderOrder = isSelected ? 20 : 10;
       marker.userData.actorPath = annotation.path;
       this.actorMarkerTargets.push(marker);
+      if (this.brushActorPaths.has(annotation.path)) {
+        this.brushCirclePickTargets.push({
+          center: marker.position.clone(),
+          path: annotation.path,
+          radius
+        });
+      }
       group.add(marker);
 
       if (isSelected) {
@@ -717,7 +737,7 @@ export class ViewerScene {
       return;
     }
 
-    const actorPath = this.pickActorMarker(event);
+    const actorPath = this.pickActor(event);
     if (actorPath) {
       this.actorSelectHandler?.(actorPath);
       event.preventDefault();
@@ -735,6 +755,69 @@ export class ViewerScene {
     }
     event.preventDefault();
   };
+
+  private pickActor(event: PointerEvent): string | null {
+    return this.pickBrushCircle(event) ?? this.pickActorMarker(event);
+  }
+
+  private pickBrushCircle(event: PointerEvent): string | null {
+    if (this.brushCirclePickTargets.length === 0) {
+      return null;
+    }
+
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) {
+      return null;
+    }
+
+    this.camera.updateMatrixWorld();
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+    let closestPath: string | null = null;
+    let closestDistance = Number.POSITIVE_INFINITY;
+    let closestDistanceSq = Number.POSITIVE_INFINITY;
+
+    for (const target of this.brushCirclePickTargets) {
+      this.projectedMarkerPosition.copy(target.center).project(this.camera);
+      if (this.projectedMarkerPosition.z < -1 || this.projectedMarkerPosition.z > 1) {
+        continue;
+      }
+
+      const markerX = ((this.projectedMarkerPosition.x + 1) / 2) * rect.width;
+      const markerY = ((1 - this.projectedMarkerPosition.y) / 2) * rect.height;
+      const distanceSq = (markerX - x) ** 2 + (markerY - y) ** 2;
+      const radiusPx = this.projectMarkerRadius(target.center, target.radius, rect);
+
+      if (distanceSq > radiusPx ** 2) {
+        continue;
+      }
+
+      const distance = target.center.distanceToSquared(this.camera.position);
+      if (distance < closestDistance || (distance === closestDistance && distanceSq < closestDistanceSq)) {
+        closestDistance = distance;
+        closestDistanceSq = distanceSq;
+        closestPath = target.path;
+      }
+    }
+
+    return closestPath;
+  }
+
+  private projectMarkerRadius(center: THREE.Vector3, radius: number, rect: DOMRect): number {
+    this.markerRadiusWorldPosition.setFromMatrixColumn(this.camera.matrixWorld, 0);
+    this.markerRadiusWorldPosition.multiplyScalar(radius).add(center);
+    this.projectedMarkerRadiusPosition.copy(this.markerRadiusWorldPosition).project(this.camera);
+
+    if (this.projectedMarkerRadiusPosition.z < -1 || this.projectedMarkerRadiusPosition.z > 1) {
+      return 18;
+    }
+
+    const centerX = ((this.projectedMarkerPosition.x + 1) / 2) * rect.width;
+    const centerY = ((1 - this.projectedMarkerPosition.y) / 2) * rect.height;
+    const radiusX = ((this.projectedMarkerRadiusPosition.x + 1) / 2) * rect.width;
+    const radiusY = ((1 - this.projectedMarkerRadiusPosition.y) / 2) * rect.height;
+    return Math.max(Math.hypot(radiusX - centerX, radiusY - centerY), 8);
+  }
 
   private pickActorMarker(event: PointerEvent): string | null {
     if (this.actorMarkerTargets.length === 0) {
