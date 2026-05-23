@@ -155,9 +155,9 @@ function decodeDeusExMeshVertex(reader: BinaryReader): MeshVertex {
   if (z > 128) z -= 256;
 
   return {
-    x: -x,
+    x,
     y: z,
-    z: -y
+    z: y
   };
 }
 
@@ -316,7 +316,7 @@ function triangulateLodMesh(
       const wedge = faceWedges[index];
       const vertex = faceVertices[index];
       writer.positions.push(vertex.x, vertex.y, vertex.z);
-      writer.uvs.push(wedge.s / 255, 1 - wedge.t / 255);
+      writer.uvs.push(-wedge.s, wedge.t);
       writer.colors.push(color.r, color.g, color.b);
     }
 

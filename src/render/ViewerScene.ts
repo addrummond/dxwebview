@@ -721,7 +721,7 @@ export class ViewerScene {
     const transformed: number[] = [];
     const drawScale3D = actor.drawScale3D ?? { x: 1, y: 1, z: 1 };
 
-    this.brushQuaternion.setFromEuler(unrealMeshRotatorEuler(actor.rotation));
+    this.brushQuaternion.setFromEuler(unrealRotatorEuler(actor.rotation));
     this.brushMatrix.compose(
       new THREE.Vector3(actor.location.x, actor.location.y, actor.location.z),
       this.brushQuaternion,
@@ -1192,14 +1192,4 @@ function unrealRotatorEuler(rotation: SceneActorAnnotation["rotation"]): THREE.E
 
   const unit = (Math.PI * 2) / 65536;
   return euler.set(rotation.roll * unit, rotation.yaw * unit, rotation.pitch * unit, "YXZ");
-}
-
-function unrealMeshRotatorEuler(rotation: SceneActorAnnotation["rotation"]): THREE.Euler {
-  const euler = new THREE.Euler(0, 0, 0, "YXZ");
-  if (!rotation) {
-    return euler;
-  }
-
-  const unit = (Math.PI * 2) / 65536;
-  return euler.set(-rotation.roll * unit, -rotation.yaw * unit, -rotation.pitch * unit, "YXZ");
 }
