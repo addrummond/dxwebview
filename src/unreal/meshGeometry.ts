@@ -155,9 +155,9 @@ function decodeDeusExMeshVertex(reader: BinaryReader): MeshVertex {
   if (z > 128) z -= 256;
 
   return {
-    x,
+    x: -x,
     y: z,
-    z: y
+    z: -y
   };
 }
 

@@ -424,7 +424,7 @@ function pushSurfaceUv(
   const x = rawPoints[point] - rawPoints[base];
   const y = rawPoints[point + 1] - rawPoints[base + 1];
   const z = rawPoints[point + 2] - rawPoints[base + 2];
-  const u = -(x * vectors[textureU] + y * vectors[textureU + 1] + z * vectors[textureU + 2] + surface.panU);
+  const u = x * vectors[textureU] + y * vectors[textureU + 1] + z * vectors[textureU + 2] + surface.panU;
   const v = x * vectors[textureV] + y * vectors[textureV + 1] + z * vectors[textureV + 2] + surface.panV;
   layer.uvs.push(u, v);
 }
