@@ -70,7 +70,17 @@ export class ViewerScene {
   private readonly upVector = new THREE.Vector3(0, 1, 0);
   private readonly projectedMarkerPosition = new THREE.Vector3();
   private readonly markerWorldPosition = new THREE.Vector3();
+  private readonly occlusionRaycaster = new THREE.Raycaster();
+  private readonly brushMatrix = new THREE.Matrix4();
+  private readonly brushQuaternion = new THREE.Quaternion();
+  private readonly brushScale = new THREE.Vector3(1, 1, 1);
+  private readonly triangleA = new THREE.Vector3();
+  private readonly triangleB = new THREE.Vector3();
+  private readonly triangleC = new THREE.Vector3();
+  private readonly triangleCenter = new THREE.Vector3();
+  private readonly triangleDirection = new THREE.Vector3();
   private actorMarkerTargets: THREE.Object3D[] = [];
+  private occluderTargets: THREE.Object3D[] = [];
   private frameTargets: THREE.Object3D[] = [];
   private isMouseLooking = false;
   private actorSelectHandler: ((actorPath: string) => void) | null = null;
@@ -136,6 +146,7 @@ export class ViewerScene {
   ): void {
     this.clearContent();
     this.placeholder.visible = false;
+    this.occluderTargets = [];
     const frameTargets: THREE.Object3D[] = [];
 
     if (visibility.solid && layers.solid.positions.length > 0) {
@@ -143,6 +154,7 @@ export class ViewerScene {
       const wire = this.createWireMesh(layers.solid.positions, 0x263238);
       this.content.add(mesh, wire);
       frameTargets.push(mesh);
+      this.occluderTargets.push(mesh);
     }
 
     if (visibility.backdrop && layers.backdrop.positions.length > 0) {
@@ -150,6 +162,7 @@ export class ViewerScene {
       const backdropWire = this.createWireMesh(layers.backdrop.positions, 0x4e6c7c);
       this.content.add(backdrop, backdropWire);
       frameTargets.push(backdrop);
+      this.occluderTargets.push(backdrop);
     }
 
     if (visibility.invisible && layers.invisible.positions.length > 0) {
@@ -157,6 +170,7 @@ export class ViewerScene {
       const invisibleWire = this.createWireMesh(layers.invisible.positions, 0x8c6247);
       this.content.add(invisible, invisibleWire);
       frameTargets.push(invisible);
+      this.occluderTargets.push(invisible);
     }
 
     if (actorAnnotations.length > 0) {
@@ -423,19 +437,13 @@ export class ViewerScene {
   private createSelectedBrushMesh(geometrySource: SceneBrushGeometry, actor: SceneActorAnnotation): THREE.Group {
     const group = new THREE.Group();
     group.name = `selected brush geometry: ${actor.objectName}`;
-    group.position.set(actor.location.x, actor.location.y, actor.location.z);
-    applyUnrealRotator(group, actor.rotation);
-
-    const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute("position", new THREE.BufferAttribute(geometrySource.positions, 3));
-    geometry.computeVertexNormals();
+    const split = this.splitBrushTrianglesByVisibility(geometrySource.positions, actor);
 
     const hiddenWire = new THREE.Mesh(
-      geometry.clone(),
+      this.createPositionGeometry(split.hidden),
       new THREE.MeshBasicMaterial({
         color: 0xffffff,
-        depthFunc: THREE.GreaterDepth,
-        depthTest: true,
+        depthTest: false,
         depthWrite: false,
         opacity: 0.18,
         transparent: true,
@@ -445,10 +453,9 @@ export class ViewerScene {
     hiddenWire.renderOrder = 29;
 
     const visibleFill = new THREE.Mesh(
-      geometry,
+      this.createPositionGeometry(split.visible),
       new THREE.MeshBasicMaterial({
         color: 0xffe45c,
-        depthFunc: THREE.LessEqualDepth,
         depthTest: true,
         depthWrite: false,
         opacity: 0.42,
@@ -459,10 +466,9 @@ export class ViewerScene {
     visibleFill.renderOrder = 30;
 
     const visibleWire = new THREE.Mesh(
-      geometry.clone(),
+      this.createPositionGeometry(split.visible),
       new THREE.MeshBasicMaterial({
         color: 0xffffff,
-        depthFunc: THREE.LessEqualDepth,
         depthTest: true,
         depthWrite: false,
         opacity: 0.95,
@@ -474,6 +480,76 @@ export class ViewerScene {
 
     group.add(hiddenWire, visibleFill, visibleWire);
     return group;
+  }
+
+  private splitBrushTrianglesByVisibility(
+    positions: TriangleBuffer,
+    actor: SceneActorAnnotation
+  ): { hidden: Float32Array; visible: Float32Array } {
+    const hidden: number[] = [];
+    const visible: number[] = [];
+
+    this.brushQuaternion.setFromEuler(unrealRotatorEuler(actor.rotation));
+    this.brushMatrix.compose(
+      new THREE.Vector3(actor.location.x, actor.location.y, actor.location.z),
+      this.brushQuaternion,
+      this.brushScale
+    );
+
+    for (let index = 0; index + 8 < positions.length; index += 9) {
+      this.triangleA.set(positions[index], positions[index + 1], positions[index + 2]).applyMatrix4(this.brushMatrix);
+      this.triangleB
+        .set(positions[index + 3], positions[index + 4], positions[index + 5])
+        .applyMatrix4(this.brushMatrix);
+      this.triangleC
+        .set(positions[index + 6], positions[index + 7], positions[index + 8])
+        .applyMatrix4(this.brushMatrix);
+      this.triangleCenter.copy(this.triangleA).add(this.triangleB).add(this.triangleC).multiplyScalar(1 / 3);
+
+      const target = this.isBrushTriangleOccluded(this.triangleCenter) ? hidden : visible;
+      target.push(
+        this.triangleA.x,
+        this.triangleA.y,
+        this.triangleA.z,
+        this.triangleB.x,
+        this.triangleB.y,
+        this.triangleB.z,
+        this.triangleC.x,
+        this.triangleC.y,
+        this.triangleC.z
+      );
+    }
+
+    return {
+      hidden: new Float32Array(hidden),
+      visible: new Float32Array(visible)
+    };
+  }
+
+  private isBrushTriangleOccluded(center: THREE.Vector3): boolean {
+    if (this.occluderTargets.length === 0) {
+      return false;
+    }
+
+    this.triangleDirection.copy(center).sub(this.camera.position);
+    const targetDistance = this.triangleDirection.length();
+    if (targetDistance <= 0) {
+      return false;
+    }
+
+    this.triangleDirection.multiplyScalar(1 / targetDistance);
+    this.occlusionRaycaster.set(this.camera.position, this.triangleDirection);
+    this.occlusionRaycaster.near = 1;
+    this.occlusionRaycaster.far = Math.max(targetDistance - 4, 1);
+
+    return this.occlusionRaycaster.intersectObjects(this.occluderTargets, false).length > 0;
+  }
+
+  private createPositionGeometry(positions: Float32Array): THREE.BufferGeometry {
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+    geometry.computeVertexNormals();
+    return geometry;
   }
 
   private addInputListeners(): void {
@@ -853,11 +929,12 @@ function actorCategoryColor(category: string): number {
   }
 }
 
-function applyUnrealRotator(object: THREE.Object3D, rotation: SceneActorAnnotation["rotation"]): void {
+function unrealRotatorEuler(rotation: SceneActorAnnotation["rotation"]): THREE.Euler {
+  const euler = new THREE.Euler(0, 0, 0, "YXZ");
   if (!rotation) {
-    return;
+    return euler;
   }
 
   const unit = (Math.PI * 2) / 65536;
-  object.rotation.set(rotation.roll * unit, rotation.yaw * unit, rotation.pitch * unit, "YXZ");
+  return euler.set(rotation.roll * unit, rotation.yaw * unit, rotation.pitch * unit, "YXZ");
 }
