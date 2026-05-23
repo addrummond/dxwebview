@@ -1,0 +1,53 @@
+# dxwebview
+
+A browser-based Deus Ex GOTY map viewer for inspecting UE1 `.dx` maps, BSP geometry, decoded textures, actor markers, and rendered actor meshes.
+
+## Run
+
+```sh
+npm install
+npm run dev
+```
+
+Open the Vite URL in a Chromium-based browser. The viewer uses the File System Access API, so Safari and Firefox will not expose the folder picker.
+
+## Load Deus Ex
+
+Click **Choose Folder** and select the root of an extracted Deus Ex GOTY install, for example:
+
+```text
+/Users/alex/deus_ex_goty_51757
+```
+
+The folder should contain the usual `Maps`, `Textures`, and `System` directories. After indexing, choose a map from the left-hand map list.
+
+## Navigate
+
+- Click the viewport to enter freelook.
+- Move with `W`/`A`/`S`/`D`.
+- Move up with `Space` or `E`.
+- Move down with `Ctrl` or `Q`.
+- Hold `Shift` to move faster.
+- Press `Esc` to leave freelook or clear the current actor selection.
+- Click **Reset** to frame the current map again.
+
+The last selected map, camera position, and camera orientation are saved locally and restored on refresh when folder permission is still available.
+
+## Inspect Maps
+
+Viewport toggles control the rendered layers:
+
+- **Geometry**: normal BSP level geometry.
+- **Backdrops**: fake-backdrop surfaces.
+- **Invisible**: invisible BSP surfaces and outlines.
+- **Actors**: actor annotations and rendered actor brush/mesh geometry.
+- **Non-visible actors**: always-on-top actor marker overlays.
+
+Click an actor marker in the viewport or an actor row in the inspector to select it. Selected actors are highlighted in the viewport and scrolled into view in the inspector.
+
+## Checks
+
+```sh
+npm test
+npm run build
+```
