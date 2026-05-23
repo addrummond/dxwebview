@@ -56,6 +56,6 @@ Configure these repository secrets:
 - `CLOUDFLARE_API_TOKEN`: Cloudflare API token with Pages write/edit access.
 - `CLOUDFLARE_ACCOUNT_ID`: Cloudflare account ID for the Pages project.
 
-By default, the workflow deploys to a Pages project named after the GitHub repository, which gives a `dxwebview.pages.dev` deployment URL. To use a different Pages project or subdomain name, set the repository variable `CLOUDFLARE_PAGES_PROJECT_NAME`.
+By default, the workflow creates and deploys to a Pages project named after the GitHub repository, which gives a `dxwebview.pages.dev` deployment URL. To use a different Pages project or subdomain name, set the repository variable `CLOUDFLARE_PAGES_PROJECT_NAME`.
 
 Attach a custom subdomain in the Cloudflare Pages project settings. Do not point this workflow at an existing Pages project that is built by another site unless replacing that project's deployed output is intended.
