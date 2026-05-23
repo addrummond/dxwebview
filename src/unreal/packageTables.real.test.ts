@@ -15,6 +15,7 @@ import { readTextureImages } from "./textureDecoder";
 const deusExRoot = process.env.DEUS_EX_GOTY_PATH ?? "/Users/alex/deus_ex_goty_51757";
 const unatcoIslandPath = `${deusExRoot}/Maps/01_NYC_UNATCOIsland.dx`;
 const trainingPath = `${deusExRoot}/Maps/00_Training.dx`;
+const freeClinicPath = `${deusExRoot}/Maps/02_NYC_FreeClinic.dx`;
 const hongKongCanalPath = `${deusExRoot}/Maps/06_HongKong_WanChai_Canal.dx`;
 const concreteTexturePath = `${deusExRoot}/Textures/CoreTexConcrete.utx`;
 
@@ -100,6 +101,22 @@ describe("readPackageTables with Deus Ex GOTY data", () => {
       expect(loaded.brushGeometries.size).toBeGreaterThan(0);
     }
   );
+
+  it.skipIf(!existsSync(freeClinicPath) || !existsSync(`${deusExRoot}/System/DeusExDeco.u`))(
+    "loads decoration meshes referenced by actor classes",
+    async () => {
+      const index = await buildRealPackageIndex(["02_NYC_FreeClinic.dx"], [], ["DeusExDeco.u"]);
+      const freeClinic = index.maps.find((entry) => entry.name === "02_NYC_FreeClinic.dx");
+
+      expect(freeClinic).toBeDefined();
+      const loaded = await readIndexedPackageSummary(freeClinic!, index);
+      const couch = loaded.actorAnnotations.find((actor) => actor.objectName === "CouchLeather0");
+
+      expect(couch).toBeDefined();
+      expect(loaded.meshGeometries.get(couch!.path)?.positions.length).toBeGreaterThan(0);
+      expect([...loaded.textures.keys()].some((key) => key.includes("couchleathertex1"))).toBe(true);
+    }
+  );
 });
 
 function totalTriangleCoordinates(geometry: ReturnType<typeof readLargestModelGeometry>): number {
@@ -130,12 +147,24 @@ function totalMaterialTriangles(geometry: ReturnType<typeof readLargestModelGeom
   return geometry?.materials.reduce((total, material) => total + material.triangleCount, 0) ?? 0;
 }
 
-async function buildRealPackageIndex(): Promise<PackageIndex> {
-  const packages: IndexedPackage[] = [await realPackage("Maps", "00_Training.dx")];
-  const textureNames = await readdir(`${deusExRoot}/Textures`);
+async function buildRealPackageIndex(
+  mapNames = ["00_Training.dx"],
+  texturePackageNames: string[] | null = null,
+  systemPackageNames: string[] = []
+): Promise<PackageIndex> {
+  const packages: IndexedPackage[] = [];
 
-  for (const textureName of textureNames.filter((name) => name.toLowerCase().endsWith(".utx"))) {
+  for (const mapName of mapNames) {
+    packages.push(await realPackage("Maps", mapName));
+  }
+
+  const textureNames =
+    texturePackageNames ?? (await readdir(`${deusExRoot}/Textures`)).filter((name) => name.toLowerCase().endsWith(".utx"));
+  for (const textureName of textureNames) {
     packages.push(await realPackage("Textures", textureName));
+  }
+  for (const systemName of systemPackageNames) {
+    packages.push(await realPackage("System", systemName));
   }
 
   const byKey = new Map<string, IndexedPackage>();
@@ -146,9 +175,9 @@ async function buildRealPackageIndex(): Promise<PackageIndex> {
   return {
     byKey,
     countsByFolder: {
-      Maps: 1,
-      Textures: packages.length - 1,
-      System: 0,
+      Maps: mapNames.length,
+      Textures: textureNames.length,
+      System: systemPackageNames.length,
       Sounds: 0,
       Music: 0
     },

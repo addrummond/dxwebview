@@ -165,11 +165,25 @@ async function readMeshActorGeometries(
       continue;
     }
 
-    const reference = meshReferenceForActor(actor);
-    if (!reference) {
-      continue;
+    const geometry = await readMeshGeometryForActor(actor, entry, mapBuffer, mapTables, index, packageCache, meshCache);
+    if (geometry) {
+      geometries.set(actor.path, geometry);
     }
+  }
 
+  return geometries;
+}
+
+async function readMeshGeometryForActor(
+  actor: UnrealActorAnnotation,
+  entry: IndexedPackage,
+  mapBuffer: ArrayBuffer,
+  mapTables: UnrealPackageTables,
+  index: PackageIndex | undefined,
+  packageCache: Map<string, Promise<{ buffer: ArrayBuffer; tables: UnrealPackageTables } | null>>,
+  meshCache: Map<string, UnrealMeshGeometry | null>
+): Promise<UnrealMeshGeometry | null> {
+  for (const reference of meshReferencesForActor(actor)) {
     const key = `${reference.packageName.toLowerCase()}:${reference.meshName.toLowerCase()}`;
     if (!meshCache.has(key)) {
       const meshPackage = await loadMeshPackage(reference.packageName, entry, mapBuffer, mapTables, index, packageCache);
@@ -183,24 +197,76 @@ async function readMeshActorGeometries(
 
     const geometry = meshCache.get(key);
     if (geometry) {
-      geometries.set(actor.path, geometry);
+      return geometry;
     }
   }
 
-  return geometries;
+  return null;
 }
 
-function meshReferenceForActor(actor: UnrealActorAnnotation): { meshName: string; packageName: string } | null {
-  const meshPath = actor.mesh && actor.mesh !== "None" ? actor.mesh : actor.classPath;
-  const parts = meshPath.split(".").filter(Boolean);
-  const meshName = actor.mesh && actor.mesh !== "None" ? parts.at(-1) : actor.className;
-  const packageName = parts.length > 1 ? parts[0] : null;
+function meshReferencesForActor(actor: UnrealActorAnnotation): { meshName: string; packageName: string }[] {
+  const references: { meshName: string; packageName: string }[] = [];
+  const explicitMesh = meshPathReference(actor.mesh);
+  if (explicitMesh) {
+    references.push(explicitMesh);
+  }
 
-  if (!meshName || !packageName) {
+  const classParts = actor.classPath.split(".").filter(Boolean);
+  const classPackage = classParts.length > 1 ? classParts[0] : null;
+  if (classPackage) {
+    references.push({ meshName: actor.className, packageName: classPackage });
+  }
+
+  for (const packageName of fallbackMeshPackageNames(actor)) {
+    references.push({ meshName: actor.className, packageName });
+  }
+
+  return uniqueMeshReferences(references);
+}
+
+function meshPathReference(meshPath: string | null): { meshName: string; packageName: string } | null {
+  if (!meshPath || meshPath === "None") {
     return null;
   }
 
-  return { meshName, packageName };
+  const parts = meshPath.split(".").filter(Boolean);
+  const meshName = parts.at(-1);
+  const packageName = parts.length > 1 ? parts[0] : null;
+  return meshName && packageName ? { meshName, packageName } : null;
+}
+
+function fallbackMeshPackageNames(actor: UnrealActorAnnotation): string[] {
+  switch (actor.category) {
+    case "Decoration":
+      return ["DeusExDeco"];
+    case "Ammo":
+    case "Item":
+    case "Key":
+    case "Weapon":
+      return ["DeusExItems", "DeusExDeco"];
+    case "Character":
+      return ["DeusExCharacters"];
+    default:
+      return ["DeusExDeco", "DeusExItems", "DeusExCharacters"];
+  }
+}
+
+function uniqueMeshReferences(
+  references: { meshName: string; packageName: string }[]
+): { meshName: string; packageName: string }[] {
+  const seen = new Set<string>();
+  const unique: { meshName: string; packageName: string }[] = [];
+
+  for (const reference of references) {
+    const key = `${reference.packageName.toLowerCase()}:${reference.meshName.toLowerCase()}`;
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    unique.push(reference);
+  }
+
+  return unique;
 }
 
 async function loadMeshPackage(
