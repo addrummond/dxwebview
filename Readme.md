@@ -40,7 +40,7 @@ Viewport toggles control the rendered layers:
 - **Geometry**: normal BSP level geometry.
 - **Backdrops**: fake-backdrop surfaces.
 - **Invisible**: invisible BSP surfaces and outlines.
-- **Actors**: actor annotations and rendered actor brush/mesh geometry.
+- **Actors**: actor position markers. Actor brush and mesh geometry remains visible.
 - **Non-visible actors**: always-on-top actor marker overlays.
 
 Click an actor marker in the viewport or an actor row in the inspector to select it. Selected actors are highlighted in the viewport and scrolled into view in the inspector.

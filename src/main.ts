@@ -402,8 +402,8 @@ function refreshSelectedGeometry(options: { frameView?: boolean } = {}): void {
     selectedMap.textures,
     state.actorAnnotationsVisible ? displayActors : [],
     state.selectedActorPath,
-    state.actorAnnotationsVisible ? actorBrushGeometries(selectedMap, displayActors) : [],
-    state.actorAnnotationsVisible ? actorMeshGeometries(selectedMap, displayActors) : [],
+    actorBrushGeometries(selectedMap, displayActors),
+    actorMeshGeometries(selectedMap, displayActors),
     state.nonVisibleActorAnnotationsVisible,
     frameView
   );
