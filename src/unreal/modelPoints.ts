@@ -74,7 +74,37 @@ export function readLargestModelGeometry(
     .filter((entry) => entry.serialOffset !== null && entry.serialSize > 128)
     .sort((a, b) => b.serialSize - a.serialSize)[0];
 
-  if (model?.serialOffset === null || model?.serialOffset === undefined) {
+  if (!model) {
+    return null;
+  }
+
+  return readModelGeometry(buffer, tables, model);
+}
+
+export function readModelGeometryByName(
+  buffer: ArrayBuffer,
+  tables: UnrealPackageTables,
+  objectName: string
+): UnrealModelGeometry | null {
+  const model = tables.exports
+    .map((entry) => ({ ...entry, className: resolveObjectName(entry.classIndex, tables) }))
+    .find(
+      (entry): entry is ModelCandidate =>
+        entry.className === "Model" &&
+        entry.objectName === objectName &&
+        entry.serialOffset !== null &&
+        entry.serialSize > 0
+    );
+
+  return model ? readModelGeometry(buffer, tables, model) : null;
+}
+
+function readModelGeometry(
+  buffer: ArrayBuffer,
+  tables: UnrealPackageTables,
+  model: ModelCandidate
+): UnrealModelGeometry | null {
+  if (model.serialOffset === null) {
     return null;
   }
 

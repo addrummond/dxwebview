@@ -1,6 +1,6 @@
 import { readActorAnnotations, type UnrealActorAnnotation } from "./actorAnnotations";
 import { readPackageTables, type UnrealPackageTables } from "./packageTables";
-import { readLargestModelGeometry, type UnrealModelGeometry } from "./modelPoints";
+import { readLargestModelGeometry, readModelGeometryByName, type UnrealModelGeometry } from "./modelPoints";
 import { readTextureImages, type UnrealTextureImage } from "./textureDecoder";
 
 export const KNOWN_PACKAGE_FOLDERS = ["Maps", "Textures", "System", "Sounds", "Music"] as const;
@@ -27,6 +27,7 @@ export interface PackageIndex {
 
 export interface IndexedPackageWithSummary extends IndexedPackage {
   actorAnnotations: UnrealActorAnnotation[];
+  brushGeometries: Map<string, UnrealModelGeometry>;
   tables: UnrealPackageTables;
   geometry: UnrealModelGeometry | null;
   textures: Map<string, UnrealTextureImage>;
@@ -103,14 +104,43 @@ export async function readIndexedPackageSummary(
   const tables = readPackageTables(buffer);
   const geometry = readLargestModelGeometry(buffer, tables);
   const actorAnnotations = readActorAnnotations(buffer, tables);
+  const brushGeometries = readBrushActorGeometries(buffer, tables, actorAnnotations);
 
   return {
     ...entry,
     actorAnnotations,
+    brushGeometries,
     tables,
     geometry,
     textures: geometry ? await loadGeometryTextures(entry, buffer, tables, geometry, index) : new Map()
   };
+}
+
+function readBrushActorGeometries(
+  buffer: ArrayBuffer,
+  tables: UnrealPackageTables,
+  actorAnnotations: UnrealActorAnnotation[]
+): Map<string, UnrealModelGeometry> {
+  const geometries = new Map<string, UnrealModelGeometry>();
+  const byModelName = new Map<string, UnrealModelGeometry | null>();
+
+  for (const actor of actorAnnotations) {
+    const modelName = actor.brush?.brushModel;
+    if (!modelName) {
+      continue;
+    }
+
+    if (!byModelName.has(modelName)) {
+      byModelName.set(modelName, readModelGeometryByName(buffer, tables, modelName));
+    }
+
+    const geometry = byModelName.get(modelName);
+    if (geometry) {
+      geometries.set(actor.path, geometry);
+    }
+  }
+
+  return geometries;
 }
 
 async function loadGeometryTextures(

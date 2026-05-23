@@ -97,6 +97,7 @@ describe("readPackageTables with Deus Ex GOTY data", () => {
 
       expect(loaded.geometry?.materials.length).toBeGreaterThan(10);
       expect(loaded.textures.size).toBeGreaterThan(0);
+      expect(loaded.brushGeometries.size).toBeGreaterThan(0);
     }
   );
 });

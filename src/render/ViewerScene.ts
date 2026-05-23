@@ -42,6 +42,15 @@ export interface SceneActorAnnotation {
   };
   objectName: string;
   path: string;
+  rotation: {
+    pitch: number;
+    roll: number;
+    yaw: number;
+  } | null;
+}
+
+export interface SceneBrushGeometry {
+  positions: TriangleBuffer;
 }
 
 export class ViewerScene {
@@ -122,6 +131,7 @@ export class ViewerScene {
     textures = new Map<string, UnrealTextureImage>(),
     actorAnnotations: SceneActorAnnotation[] = [],
     selectedActorPath: string | null = null,
+    selectedBrushGeometry: SceneBrushGeometry | null = null,
     frameView = true
   ): void {
     this.clearContent();
@@ -151,6 +161,13 @@ export class ViewerScene {
 
     if (actorAnnotations.length > 0) {
       this.content.add(this.createActorMarkerGroup(actorAnnotations, selectedActorPath));
+    }
+
+    if (selectedBrushGeometry && selectedActorPath) {
+      const selectedActor = actorAnnotations.find((annotation) => annotation.path === selectedActorPath);
+      if (selectedActor) {
+        this.content.add(this.createSelectedBrushMesh(selectedBrushGeometry, selectedActor));
+      }
     }
 
     this.frameTargets = frameTargets;
@@ -398,6 +415,44 @@ export class ViewerScene {
       }
     }
 
+    return group;
+  }
+
+  private createSelectedBrushMesh(geometrySource: SceneBrushGeometry, actor: SceneActorAnnotation): THREE.Group {
+    const group = new THREE.Group();
+    group.name = `selected brush geometry: ${actor.objectName}`;
+    group.position.set(actor.location.x, actor.location.y, actor.location.z);
+    applyUnrealRotator(group, actor.rotation);
+
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute("position", new THREE.BufferAttribute(geometrySource.positions, 3));
+    geometry.computeVertexNormals();
+
+    const fill = new THREE.Mesh(
+      geometry,
+      new THREE.MeshBasicMaterial({
+        color: 0xffe45c,
+        depthTest: false,
+        opacity: 0.34,
+        side: THREE.DoubleSide,
+        transparent: true
+      })
+    );
+    fill.renderOrder = 30;
+
+    const wire = new THREE.Mesh(
+      geometry.clone(),
+      new THREE.MeshBasicMaterial({
+        color: 0xffffff,
+        depthTest: false,
+        opacity: 0.9,
+        transparent: true,
+        wireframe: true
+      })
+    );
+    wire.renderOrder = 31;
+
+    group.add(fill, wire);
     return group;
   }
 
@@ -776,4 +831,13 @@ function actorCategoryColor(category: string): number {
     default:
       return 0xe7ecef;
   }
+}
+
+function applyUnrealRotator(object: THREE.Object3D, rotation: SceneActorAnnotation["rotation"]): void {
+  if (!rotation) {
+    return;
+  }
+
+  const unit = (Math.PI * 2) / 65536;
+  object.rotation.set(rotation.roll * unit, rotation.yaw * unit, rotation.pitch * unit, "YXZ");
 }

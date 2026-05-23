@@ -325,6 +325,7 @@ function refreshSelectedGeometry(options: { frameView?: boolean } = {}): void {
     selectedMap.textures,
     state.actorAnnotationsVisible ? selectedMap.actorAnnotations : [],
     state.selectedActorPath,
+    selectedBrushGeometry(selectedMap),
     frameView
   );
   setStatus(
@@ -334,6 +335,38 @@ function refreshSelectedGeometry(options: { frameView?: boolean } = {}): void {
       selectedMap.actorAnnotations.length
     } actor annotations.`
   );
+}
+
+function selectedBrushGeometry(selectedMap: IndexedPackageWithSummary): { positions: Float32Array } | null {
+  if (!state.selectedActorPath) {
+    return null;
+  }
+
+  const geometry = selectedMap.brushGeometries.get(state.selectedActorPath);
+  if (!geometry) {
+    return null;
+  }
+
+  return {
+    positions: combinePositions([
+      geometry.triangles,
+      geometry.backdropTriangles,
+      geometry.invisibleTriangles
+    ])
+  };
+}
+
+function combinePositions(buffers: Float32Array[]): Float32Array {
+  const length = buffers.reduce((total, buffer) => total + buffer.length, 0);
+  const combined = new Float32Array(length);
+  let offset = 0;
+
+  for (const buffer of buffers) {
+    combined.set(buffer, offset);
+    offset += buffer.length;
+  }
+
+  return combined;
 }
 
 function renderStats(): void {
