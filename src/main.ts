@@ -103,6 +103,9 @@ const actorsToggleElement = getElement<HTMLInputElement>("toggle-actors");
 const resetViewButton = getElement<HTMLButtonElement>("reset-view");
 
 const viewerScene = new ViewerScene(viewportElement);
+viewerScene.setActorSelectHandler((actorPath) => {
+  selectActor(actorPath, { focusViewport: false, scrollInspector: true });
+});
 render();
 
 chooseFolderButton.addEventListener("click", () => {
@@ -135,21 +138,15 @@ resetViewButton.addEventListener("click", () => {
 
 inspectorContentElement.addEventListener("click", (event) => {
   const button = (event.target as HTMLElement).closest<HTMLButtonElement>("[data-actor-path]");
-  const actorPath = button?.dataset.actorPath;
-  const actor = state.selectedMap?.actorAnnotations.find((annotation) => annotation.path === actorPath);
-
-  if (!actor) {
-    return;
+  if (button?.dataset.actorPath) {
+    selectActor(button.dataset.actorPath, { focusViewport: true, scrollInspector: false });
   }
+});
 
-  state.actorAnnotationsVisible = true;
-  state.selectedActorPath = actor.path;
-  refreshSelectedGeometry();
-  viewerScene.focusPoint(
-    actor.location,
-    Math.max(actor.collisionRadius ?? 0, actor.collisionHeight ?? 0, actor.category === "Brush" ? 96 : 48)
-  );
-  render();
+window.addEventListener("keydown", (event) => {
+  if (event.code === "Escape" && state.selectedActorPath) {
+    clearSelectedActor();
+  }
 });
 
 function getElement<T extends HTMLElement>(id: string): T {
@@ -159,6 +156,54 @@ function getElement<T extends HTMLElement>(id: string): T {
   }
 
   return element as T;
+}
+
+function selectActor(
+  actorPath: string,
+  options: { focusViewport: boolean; scrollInspector: boolean }
+): void {
+  const actor = state.selectedMap?.actorAnnotations.find((annotation) => annotation.path === actorPath);
+
+  if (!actor) {
+    return;
+  }
+
+  state.actorAnnotationsVisible = true;
+  state.selectedActorPath = actor.path;
+  refreshSelectedGeometry();
+
+  if (options.focusViewport) {
+    viewerScene.focusPoint(
+      actor.location,
+      Math.max(actor.collisionRadius ?? 0, actor.collisionHeight ?? 0, actor.category === "Brush" ? 96 : 48)
+    );
+  }
+
+  render();
+
+  if (options.scrollInspector) {
+    requestAnimationFrame(scrollSelectedActorIntoView);
+  }
+}
+
+function clearSelectedActor(): void {
+  state.selectedActorPath = null;
+  refreshSelectedGeometry();
+  render();
+}
+
+function scrollSelectedActorIntoView(): void {
+  const selectedPath = state.selectedActorPath;
+  if (!selectedPath) {
+    return;
+  }
+
+  for (const button of inspectorContentElement.querySelectorAll<HTMLButtonElement>("[data-actor-path]")) {
+    if (button.dataset.actorPath === selectedPath) {
+      button.scrollIntoView({ block: "center" });
+      return;
+    }
+  }
 }
 
 async function chooseInstallFolder(): Promise<void> {
@@ -449,12 +494,13 @@ function renderActorAnnotations(annotations: UnrealActorAnnotation[]): string {
     return "";
   }
 
+  const displayedAnnotations = actorAnnotationRows(annotations);
+
   return `
     <section class="sample-section">
       <h3>Actor Annotations</h3>
       <ol class="actor-list">
-        ${annotations
-          .slice(0, 200)
+        ${displayedAnnotations
           .map(
             (actor) => `
               <li>
@@ -500,6 +546,20 @@ function renderActorMetadata(actor: UnrealActorAnnotation): string {
   }
 
   return `<span class="actor-meta">${values.map(escapeHtml).join(" · ")}</span>`;
+}
+
+function actorAnnotationRows(annotations: UnrealActorAnnotation[]): UnrealActorAnnotation[] {
+  const rows = annotations.slice(0, 200);
+  const selectedPath = state.selectedActorPath;
+
+  if (selectedPath && !rows.some((actor) => actor.path === selectedPath)) {
+    const selected = annotations.find((actor) => actor.path === selectedPath);
+    if (selected) {
+      rows.push(selected);
+    }
+  }
+
+  return rows;
 }
 
 function renderListSection(title: string, values: string[]): string {

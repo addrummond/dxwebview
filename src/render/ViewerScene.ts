@@ -59,8 +59,12 @@ export class ViewerScene {
   private readonly forwardVector = new THREE.Vector3();
   private readonly rightVector = new THREE.Vector3();
   private readonly upVector = new THREE.Vector3(0, 1, 0);
+  private readonly raycaster = new THREE.Raycaster();
+  private readonly pointerNdc = new THREE.Vector2();
+  private actorMarkerTargets: THREE.Object3D[] = [];
   private frameTargets: THREE.Object3D[] = [];
   private isMouseLooking = false;
+  private actorSelectHandler: ((actorPath: string) => void) | null = null;
   private yaw = 0;
   private pitch = 0;
   private movementSpeed = 400;
@@ -165,6 +169,10 @@ export class ViewerScene {
     this.frameLoadedContent();
   }
 
+  setActorSelectHandler(handler: ((actorPath: string) => void) | null): void {
+    this.actorSelectHandler = handler;
+  }
+
   focusPoint(point: { x: number; y: number; z: number }, radius = 64): void {
     const center = new THREE.Vector3(point.x, point.y, point.z);
     const distance = Math.max(radius * 5, 180);
@@ -223,6 +231,7 @@ export class ViewerScene {
   }
 
   private clearContent(): void {
+    this.actorMarkerTargets = [];
     for (const child of [...this.content.children]) {
       this.content.remove(child);
       this.disposeObject(child);
@@ -365,6 +374,8 @@ export class ViewerScene {
       marker.name = `${annotation.category}: ${annotation.className}.${annotation.objectName}`;
       marker.position.set(annotation.location.x, annotation.location.y, annotation.location.z);
       marker.renderOrder = isSelected ? 20 : 10;
+      marker.userData.actorPath = annotation.path;
+      this.actorMarkerTargets.push(marker);
       group.add(marker);
 
       if (isSelected) {
@@ -414,6 +425,13 @@ export class ViewerScene {
       return;
     }
 
+    const actorPath = this.pickActorMarker(event);
+    if (actorPath) {
+      this.actorSelectHandler?.(actorPath);
+      event.preventDefault();
+      return;
+    }
+
     this.renderer.domElement.focus();
     this.isMouseLooking = true;
     if (isTopLevelWindow()) {
@@ -425,6 +443,26 @@ export class ViewerScene {
     }
     event.preventDefault();
   };
+
+  private pickActorMarker(event: PointerEvent): string | null {
+    if (this.actorMarkerTargets.length === 0) {
+      return null;
+    }
+
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) {
+      return null;
+    }
+
+    this.pointerNdc.set(
+      ((event.clientX - rect.left) / rect.width) * 2 - 1,
+      -(((event.clientY - rect.top) / rect.height) * 2 - 1)
+    );
+    this.raycaster.setFromCamera(this.pointerNdc, this.camera);
+
+    const hit = this.raycaster.intersectObjects(this.actorMarkerTargets, false)[0];
+    return typeof hit?.object.userData.actorPath === "string" ? hit.object.userData.actorPath : null;
+  }
 
   private handlePointerMove = (event: PointerEvent): void => {
     if (!this.isMouseLooking && document.pointerLockElement !== this.renderer.domElement) {
