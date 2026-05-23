@@ -1,5 +1,5 @@
 import "./styles.css";
-import { ViewerScene, type TriangleLayerVisibility } from "./render/ViewerScene";
+import { ViewerScene, type TriangleLayerVisibility, type ViewerViewState } from "./render/ViewerScene";
 import {
   buildPackageIndex,
   formatBytes,
@@ -21,6 +21,22 @@ interface AppState {
   status: string;
   error: string | null;
 }
+
+interface SavedSession {
+  mapPath: string | null;
+  viewState: ViewerViewState | null;
+}
+
+type PersistedDirectoryHandle = FileSystemDirectoryHandle & {
+  queryPermission?: (descriptor?: { mode?: "read" | "readwrite" }) => Promise<PermissionState>;
+  requestPermission?: (descriptor?: { mode?: "read" | "readwrite" }) => Promise<PermissionState>;
+};
+
+const LAST_MAP_PATH_KEY = "dxwebview.lastMapPath";
+const LAST_VIEW_STATE_KEY = "dxwebview.lastViewState";
+const HANDLE_DB_NAME = "dxwebview-handles";
+const HANDLE_STORE_NAME = "handles";
+const ROOT_HANDLE_KEY = "installRoot";
 
 const state: AppState = {
   actorAnnotationsVisible: true,
@@ -110,7 +126,13 @@ const viewerScene = new ViewerScene(viewportElement);
 viewerScene.setActorSelectHandler((actorPath) => {
   selectActor(actorPath, { focusViewport: false, scrollInspector: true });
 });
+viewerScene.setViewChangeHandler((viewState) => {
+  if (state.selectedMap) {
+    saveViewState(viewState);
+  }
+});
 render();
+void restoreLastSession();
 
 chooseFolderButton.addEventListener("click", () => {
   void chooseInstallFolder();
@@ -226,15 +248,10 @@ async function chooseInstallFolder(): Promise<void> {
 
   try {
     const root = await window.showDirectoryPicker();
+    await saveDirectoryHandle(root);
     setStatus(`Indexing ${root.name}...`);
 
-    const index = await buildPackageIndex(root);
-    state.index = index;
-    state.selectedActorPath = null;
-    state.selectedMap = null;
-    viewerScene.showPlaceholder();
-    setStatus(`Indexed ${index.packages.length} Unreal package files from ${index.rootName}.`);
-    render();
+    await loadPackageIndex(root, savedSession());
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") {
       setStatus("Folder selection cancelled.");
@@ -245,7 +262,7 @@ async function chooseInstallFolder(): Promise<void> {
   }
 }
 
-async function selectMap(entry: IndexedPackage): Promise<void> {
+async function selectMap(entry: IndexedPackage, options: { viewState?: ViewerViewState | null } = {}): Promise<void> {
   clearError();
   state.selectedActorPath = null;
   state.selectedMap = null;
@@ -255,11 +272,18 @@ async function selectMap(entry: IndexedPackage): Promise<void> {
   try {
     state.selectedMap = await readIndexedPackageSummary(entry, state.index ?? undefined);
     state.selectedActorPath = null;
+    saveLastMapPath(entry.path);
     if (state.selectedMap.geometry && totalTriangleCount(state.selectedMap.geometry) > 0) {
       state.surfaceVisibility = defaultSurfaceVisibility(state.selectedMap.geometry);
       refreshSelectedGeometry();
+      if (options.viewState) {
+        viewerScene.applyViewState(options.viewState);
+      }
     } else if (state.selectedMap.geometry) {
       viewerScene.showPointCloud(state.selectedMap.geometry.points);
+      if (options.viewState) {
+        viewerScene.applyViewState(options.viewState);
+      }
       setStatus(
         `Loaded ${state.selectedMap.geometry.points.length / 3} points from ${state.selectedMap.geometry.sourceExport}.`
       );
@@ -270,6 +294,43 @@ async function selectMap(entry: IndexedPackage): Promise<void> {
     render();
   } catch (error) {
     setError(error instanceof Error ? error.message : `Unable to read ${entry.path}.`);
+  }
+}
+
+async function loadPackageIndex(root: FileSystemDirectoryHandle, session: SavedSession): Promise<void> {
+  const index = await buildPackageIndex(root);
+  state.index = index;
+  state.selectedActorPath = null;
+  state.selectedMap = null;
+  viewerScene.showPlaceholder();
+  setStatus(`Indexed ${index.packages.length} Unreal package files from ${index.rootName}.`);
+  render();
+
+  if (session.mapPath) {
+    const map = index.maps.find((entry) => entry.path === session.mapPath);
+    if (map) {
+      await selectMap(map, { viewState: session.viewState });
+    }
+  }
+}
+
+async function restoreLastSession(): Promise<void> {
+  const session = savedSession();
+  if (!session.mapPath) {
+    return;
+  }
+
+  const root = await loadDirectoryHandle();
+  if (!root || !(await ensureDirectoryPermission(root))) {
+    setStatus("Choose the Deus Ex GOTY folder to restore the last map.");
+    return;
+  }
+
+  try {
+    setStatus("Restoring last map...");
+    await loadPackageIndex(root, session);
+  } catch (error) {
+    setError(error instanceof Error ? error.message : "Unable to restore last map.");
   }
 }
 
@@ -651,6 +712,110 @@ function displayedTriangleCount(
     (visibility.backdrop ? geometry.backdropTriangles.length / 9 : 0) +
     (visibility.invisible ? geometry.invisibleTriangles.length / 9 : 0)
   );
+}
+
+function savedSession(): SavedSession {
+  return {
+    mapPath: localStorage.getItem(LAST_MAP_PATH_KEY),
+    viewState: loadViewState()
+  };
+}
+
+function saveLastMapPath(path: string): void {
+  localStorage.setItem(LAST_MAP_PATH_KEY, path);
+}
+
+function loadViewState(): ViewerViewState | null {
+  const raw = localStorage.getItem(LAST_VIEW_STATE_KEY);
+  if (!raw) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(raw) as ViewerViewState;
+    if (isFiniteViewState(parsed)) {
+      return parsed;
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
+}
+
+function saveViewState(viewState: ViewerViewState): void {
+  localStorage.setItem(LAST_VIEW_STATE_KEY, JSON.stringify(viewState));
+}
+
+function isFiniteViewState(value: ViewerViewState): boolean {
+  return (
+    Number.isFinite(value.position?.x) &&
+    Number.isFinite(value.position?.y) &&
+    Number.isFinite(value.position?.z) &&
+    Number.isFinite(value.quaternion?.w) &&
+    Number.isFinite(value.quaternion?.x) &&
+    Number.isFinite(value.quaternion?.y) &&
+    Number.isFinite(value.quaternion?.z)
+  );
+}
+
+async function saveDirectoryHandle(root: FileSystemDirectoryHandle): Promise<void> {
+  const db = await openHandleDatabase();
+  try {
+    await idbRequest(db.transaction(HANDLE_STORE_NAME, "readwrite").objectStore(HANDLE_STORE_NAME).put(root, ROOT_HANDLE_KEY));
+  } finally {
+    db.close();
+  }
+}
+
+async function loadDirectoryHandle(): Promise<PersistedDirectoryHandle | null> {
+  const db = await openHandleDatabase();
+  try {
+    const handle = await idbRequest(
+      db.transaction(HANDLE_STORE_NAME, "readonly").objectStore(HANDLE_STORE_NAME).get(ROOT_HANDLE_KEY)
+    );
+    return isDirectoryHandle(handle) ? handle : null;
+  } finally {
+    db.close();
+  }
+}
+
+function isDirectoryHandle(value: unknown): value is PersistedDirectoryHandle {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "kind" in value &&
+    (value as { kind: unknown }).kind === "directory"
+  );
+}
+
+async function ensureDirectoryPermission(root: PersistedDirectoryHandle): Promise<boolean> {
+  const descriptor = { mode: "read" as const };
+  const current = await root.queryPermission?.(descriptor);
+  if (current === "granted") {
+    return true;
+  }
+
+  return (await root.requestPermission?.(descriptor)) === "granted";
+}
+
+function openHandleDatabase(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(HANDLE_DB_NAME, 1);
+
+    request.onupgradeneeded = () => {
+      request.result.createObjectStore(HANDLE_STORE_NAME);
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error ?? new Error("Unable to open saved folder database."));
+  });
+}
+
+function idbRequest<T>(request: IDBRequest<T>): Promise<T> {
+  return new Promise((resolve, reject) => {
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error ?? new Error("Saved folder database request failed."));
+  });
 }
 
 function escapeHtml(value: string): string {

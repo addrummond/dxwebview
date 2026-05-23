@@ -3,6 +3,7 @@ import type { UnrealTextureImage } from "../unreal/textureDecoder";
 
 type TriangleBuffer = Float32Array<ArrayBufferLike>;
 const MOVEMENT_RAMP_SECONDS = 1;
+const VIEW_CHANGE_MIN_INTERVAL_MS = 500;
 
 export interface TriangleLayer {
   colors: TriangleBuffer;
@@ -53,6 +54,20 @@ export interface SceneBrushGeometry {
   positions: TriangleBuffer;
 }
 
+export interface ViewerViewState {
+  position: {
+    x: number;
+    y: number;
+    z: number;
+  };
+  quaternion: {
+    w: number;
+    x: number;
+    y: number;
+    z: number;
+  };
+}
+
 export class ViewerScene {
   private readonly renderer: THREE.WebGLRenderer;
   private readonly scene: THREE.Scene;
@@ -84,11 +99,14 @@ export class ViewerScene {
   private frameTargets: THREE.Object3D[] = [];
   private isMouseLooking = false;
   private actorSelectHandler: ((actorPath: string) => void) | null = null;
+  private viewChangeHandler: ((viewState: ViewerViewState) => void) | null = null;
   private yaw = 0;
   private pitch = 0;
   private movementSpeed = 400;
   private animationFrameId = 0;
   private lastFrameTime = performance.now();
+  private lastViewChangeEmitTime = 0;
+  private lastViewStateKey = "";
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -208,6 +226,39 @@ export class ViewerScene {
     this.actorSelectHandler = handler;
   }
 
+  setViewChangeHandler(handler: ((viewState: ViewerViewState) => void) | null): void {
+    this.viewChangeHandler = handler;
+  }
+
+  getViewState(): ViewerViewState {
+    return {
+      position: {
+        x: this.camera.position.x,
+        y: this.camera.position.y,
+        z: this.camera.position.z
+      },
+      quaternion: {
+        w: this.camera.quaternion.w,
+        x: this.camera.quaternion.x,
+        y: this.camera.quaternion.y,
+        z: this.camera.quaternion.z
+      }
+    };
+  }
+
+  applyViewState(viewState: ViewerViewState): void {
+    this.camera.position.set(viewState.position.x, viewState.position.y, viewState.position.z);
+    this.camera.quaternion.set(
+      viewState.quaternion.x,
+      viewState.quaternion.y,
+      viewState.quaternion.z,
+      viewState.quaternion.w
+    );
+    this.camera.updateProjectionMatrix();
+    this.syncLookAnglesFromCamera();
+    this.emitViewChange(performance.now(), true);
+  }
+
   focusPoint(point: { x: number; y: number; z: number }, radius = 64): void {
     const center = new THREE.Vector3(point.x, point.y, point.z);
     const distance = Math.max(radius * 5, 180);
@@ -223,6 +274,7 @@ export class ViewerScene {
     this.camera.lookAt(center);
     this.camera.updateProjectionMatrix();
     this.syncLookAnglesFromCamera();
+    this.emitViewChange(performance.now(), true);
     this.renderer.domElement.focus();
   }
 
@@ -823,6 +875,7 @@ export class ViewerScene {
     this.camera.lookAt(center);
     this.camera.updateProjectionMatrix();
     this.syncLookAnglesFromCamera();
+    this.emitViewChange(performance.now(), true);
   }
 
   private resize(): void {
@@ -847,7 +900,37 @@ export class ViewerScene {
 
     this.updateFreeFly(deltaSeconds, now);
     this.renderer.render(this.scene, this.camera);
+    this.emitViewChange(now);
   };
+
+  private emitViewChange(now: number, force = false): void {
+    if (!this.viewChangeHandler) {
+      return;
+    }
+
+    if (!force && now - this.lastViewChangeEmitTime < VIEW_CHANGE_MIN_INTERVAL_MS) {
+      return;
+    }
+
+    const viewState = this.getViewState();
+    const key = [
+      viewState.position.x.toFixed(2),
+      viewState.position.y.toFixed(2),
+      viewState.position.z.toFixed(2),
+      viewState.quaternion.x.toFixed(4),
+      viewState.quaternion.y.toFixed(4),
+      viewState.quaternion.z.toFixed(4),
+      viewState.quaternion.w.toFixed(4)
+    ].join(":");
+
+    if (!force && key === this.lastViewStateKey) {
+      return;
+    }
+
+    this.lastViewStateKey = key;
+    this.lastViewChangeEmitTime = now;
+    this.viewChangeHandler(viewState);
+  }
 }
 
 function isMovementKey(code: string): boolean {
