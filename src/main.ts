@@ -146,22 +146,22 @@ chooseFolderButton.addEventListener("click", () => {
 
 solidToggleElement.addEventListener("change", () => {
   state.surfaceVisibility.solid = solidToggleElement.checked;
-  refreshSelectedGeometry();
+  refreshSelectedGeometry({ frameView: false });
 });
 
 backdropToggleElement.addEventListener("change", () => {
   state.surfaceVisibility.backdrop = backdropToggleElement.checked;
-  refreshSelectedGeometry();
+  refreshSelectedGeometry({ frameView: false });
 });
 
 invisibleToggleElement.addEventListener("change", () => {
   state.surfaceVisibility.invisible = invisibleToggleElement.checked;
-  refreshSelectedGeometry();
+  refreshSelectedGeometry({ frameView: false });
 });
 
 actorsToggleElement.addEventListener("change", () => {
   state.actorAnnotationsVisible = actorsToggleElement.checked;
-  refreshSelectedGeometry();
+  refreshSelectedGeometry({ frameView: false });
 });
 
 nonVisibleActorsToggleElement.addEventListener("change", () => {
