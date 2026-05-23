@@ -170,7 +170,7 @@ function selectActor(
 
   state.actorAnnotationsVisible = true;
   state.selectedActorPath = actor.path;
-  refreshSelectedGeometry();
+  refreshSelectedGeometry({ frameView: false });
 
   if (options.focusViewport) {
     viewerScene.focusPoint(
@@ -188,7 +188,7 @@ function selectActor(
 
 function clearSelectedActor(): void {
   state.selectedActorPath = null;
-  refreshSelectedGeometry();
+  refreshSelectedGeometry({ frameView: false });
   render();
 }
 
@@ -290,9 +290,10 @@ function render(): void {
   renderInspector();
 }
 
-function refreshSelectedGeometry(): void {
+function refreshSelectedGeometry(options: { frameView?: boolean } = {}): void {
   const selectedMap = state.selectedMap;
   const geometry = selectedMap?.geometry;
+  const frameView = options.frameView ?? true;
 
   if (!geometry) {
     render();
@@ -323,7 +324,8 @@ function refreshSelectedGeometry(): void {
     state.surfaceVisibility,
     selectedMap.textures,
     state.actorAnnotationsVisible ? selectedMap.actorAnnotations : [],
-    state.selectedActorPath
+    state.selectedActorPath,
+    frameView
   );
   setStatus(
     `Rendered ${displayedTriangleCount(geometry, state.surfaceVisibility)} of ${totalTriangleCount(

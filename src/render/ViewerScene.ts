@@ -59,8 +59,8 @@ export class ViewerScene {
   private readonly forwardVector = new THREE.Vector3();
   private readonly rightVector = new THREE.Vector3();
   private readonly upVector = new THREE.Vector3(0, 1, 0);
-  private readonly raycaster = new THREE.Raycaster();
-  private readonly pointerNdc = new THREE.Vector2();
+  private readonly projectedMarkerPosition = new THREE.Vector3();
+  private readonly markerWorldPosition = new THREE.Vector3();
   private actorMarkerTargets: THREE.Object3D[] = [];
   private frameTargets: THREE.Object3D[] = [];
   private isMouseLooking = false;
@@ -121,7 +121,8 @@ export class ViewerScene {
     visibility: TriangleLayerVisibility,
     textures = new Map<string, UnrealTextureImage>(),
     actorAnnotations: SceneActorAnnotation[] = [],
-    selectedActorPath: string | null = null
+    selectedActorPath: string | null = null,
+    frameView = true
   ): void {
     this.clearContent();
     this.placeholder.visible = false;
@@ -153,7 +154,9 @@ export class ViewerScene {
     }
 
     this.frameTargets = frameTargets;
-    this.frameLoadedContent();
+    if (frameView) {
+      this.frameLoadedContent();
+    }
   }
 
   showPlaceholder(): void {
@@ -454,14 +457,30 @@ export class ViewerScene {
       return null;
     }
 
-    this.pointerNdc.set(
-      ((event.clientX - rect.left) / rect.width) * 2 - 1,
-      -(((event.clientY - rect.top) / rect.height) * 2 - 1)
-    );
-    this.raycaster.setFromCamera(this.pointerNdc, this.camera);
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+    let closestPath: string | null = null;
+    let closestDistanceSq = 18 * 18;
 
-    const hit = this.raycaster.intersectObjects(this.actorMarkerTargets, false)[0];
-    return typeof hit?.object.userData.actorPath === "string" ? hit.object.userData.actorPath : null;
+    for (const marker of this.actorMarkerTargets) {
+      marker.getWorldPosition(this.markerWorldPosition);
+      this.projectedMarkerPosition.copy(this.markerWorldPosition).project(this.camera);
+
+      if (this.projectedMarkerPosition.z < -1 || this.projectedMarkerPosition.z > 1) {
+        continue;
+      }
+
+      const markerX = ((this.projectedMarkerPosition.x + 1) / 2) * rect.width;
+      const markerY = ((1 - this.projectedMarkerPosition.y) / 2) * rect.height;
+      const distanceSq = (markerX - x) ** 2 + (markerY - y) ** 2;
+
+      if (distanceSq < closestDistanceSq && typeof marker.userData.actorPath === "string") {
+        closestDistanceSq = distanceSq;
+        closestPath = marker.userData.actorPath;
+      }
+    }
+
+    return closestPath;
   }
 
   private handlePointerMove = (event: PointerEvent): void => {
