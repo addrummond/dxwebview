@@ -428,31 +428,59 @@ export class ViewerScene {
     geometry.setAttribute("position", new THREE.BufferAttribute(geometrySource.positions, 3));
     geometry.computeVertexNormals();
 
-    const fill = new THREE.Mesh(
-      geometry,
+    const hiddenFill = new THREE.Mesh(
+      geometry.clone(),
       new THREE.MeshBasicMaterial({
         color: 0xffe45c,
         depthTest: false,
-        opacity: 0.34,
+        depthWrite: false,
+        opacity: 0.08,
         side: THREE.DoubleSide,
         transparent: true
       })
     );
-    fill.renderOrder = 30;
+    hiddenFill.renderOrder = 28;
 
-    const wire = new THREE.Mesh(
+    const hiddenWire = new THREE.Mesh(
       geometry.clone(),
       new THREE.MeshBasicMaterial({
         color: 0xffffff,
         depthTest: false,
-        opacity: 0.9,
+        depthWrite: false,
+        opacity: 0.18,
         transparent: true,
         wireframe: true
       })
     );
-    wire.renderOrder = 31;
+    hiddenWire.renderOrder = 29;
 
-    group.add(fill, wire);
+    const visibleFill = new THREE.Mesh(
+      geometry,
+      new THREE.MeshBasicMaterial({
+        color: 0xffe45c,
+        depthTest: true,
+        depthWrite: false,
+        opacity: 0.42,
+        side: THREE.DoubleSide,
+        transparent: true
+      })
+    );
+    visibleFill.renderOrder = 30;
+
+    const visibleWire = new THREE.Mesh(
+      geometry.clone(),
+      new THREE.MeshBasicMaterial({
+        color: 0xffffff,
+        depthTest: true,
+        depthWrite: false,
+        opacity: 0.95,
+        transparent: true,
+        wireframe: true
+      })
+    );
+    visibleWire.renderOrder = 31;
+
+    group.add(hiddenFill, hiddenWire, visibleFill, visibleWire);
     return group;
   }
 
