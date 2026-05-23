@@ -1,5 +1,10 @@
 import "./styles.css";
-import { ViewerScene, type TriangleLayerVisibility, type ViewerViewState } from "./render/ViewerScene";
+import {
+  ViewerScene,
+  type SceneBrushGeometry,
+  type TriangleLayerVisibility,
+  type ViewerViewState
+} from "./render/ViewerScene";
 import {
   buildPackageIndex,
   formatBytes,
@@ -395,7 +400,7 @@ function refreshSelectedGeometry(options: { frameView?: boolean } = {}): void {
     selectedMap.textures,
     state.actorAnnotationsVisible ? selectedMap.actorAnnotations : [],
     state.selectedActorPath,
-    selectedBrushGeometry(selectedMap),
+    state.actorAnnotationsVisible ? actorBrushGeometries(selectedMap) : [],
     state.nonVisibleActorAnnotationsVisible,
     frameView
   );
@@ -408,23 +413,30 @@ function refreshSelectedGeometry(options: { frameView?: boolean } = {}): void {
   );
 }
 
-function selectedBrushGeometry(selectedMap: IndexedPackageWithSummary): { positions: Float32Array } | null {
-  if (!state.selectedActorPath) {
-    return null;
+function actorBrushGeometries(selectedMap: IndexedPackageWithSummary): SceneBrushGeometry[] {
+  const geometries: SceneBrushGeometry[] = [];
+
+  for (const actor of selectedMap.actorAnnotations) {
+    const geometry = selectedMap.brushGeometries.get(actor.path);
+    if (!geometry || isCsgConstructionBrush(actor)) {
+      continue;
+    }
+    geometries.push({
+      actor,
+      geometry,
+      positions: combinePositions([
+        geometry.triangles,
+        geometry.backdropTriangles,
+        geometry.invisibleTriangles
+      ])
+    });
   }
 
-  const geometry = selectedMap.brushGeometries.get(state.selectedActorPath);
-  if (!geometry) {
-    return null;
-  }
+  return geometries;
+}
 
-  return {
-    positions: combinePositions([
-      geometry.triangles,
-      geometry.backdropTriangles,
-      geometry.invisibleTriangles
-    ])
-  };
+function isCsgConstructionBrush(actor: UnrealActorAnnotation): boolean {
+  return actor.className === "Brush" && actor.brush !== null && actor.brush.csgOperation !== null;
 }
 
 function combinePositions(buffers: Float32Array[]): Float32Array {

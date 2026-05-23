@@ -39,6 +39,7 @@ export interface UnrealActorAnnotation {
   location: UnrealVector;
   objectName: string;
   path: string;
+  prePivot: UnrealVector | null;
   rotation: UnrealRotator | null;
 }
 
@@ -96,6 +97,7 @@ export function readActorAnnotations(buffer: ArrayBuffer, tables: UnrealPackageT
     const rotation = properties.get("rotation");
     const collisionRadius = properties.get("collisionradius");
     const collisionHeight = properties.get("collisionheight");
+    const prePivot = properties.get("prepivot");
     const brush = readBrushMetadata(properties, className);
 
     annotations.push({
@@ -108,6 +110,7 @@ export function readActorAnnotations(buffer: ArrayBuffer, tables: UnrealPackageT
       location: toViewerVector(location),
       objectName: entry.objectName,
       path: resolveObjectPath(entry.index + 1, tables),
+      prePivot: isVector(prePivot) ? toViewerVector(prePivot) : null,
       rotation: isRotator(rotation) ? rotation : null
     });
   }
@@ -321,14 +324,14 @@ function readBrushMetadata(
   properties: Map<string, UnrealPropertyValue>,
   className: string
 ): UnrealBrushMetadata | null {
-  if (!className.toLowerCase().includes("brush")) {
+  const brushModel = properties.get("brush");
+  if (!className.toLowerCase().includes("brush") && typeof brushModel !== "string") {
     return null;
   }
 
   const csgOper = properties.get("csgoper");
   const group = properties.get("group");
   const polyFlags = properties.get("polyflags");
-  const brushModel = properties.get("brush");
 
   return {
     brushModel: typeof brushModel === "string" ? brushModel : null,
