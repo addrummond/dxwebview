@@ -329,7 +329,7 @@ function writePoint(points: Float32Array, index: number, x: number, y: number, z
   const target = index * 3;
   points[target] = x;
   points[target + 1] = z;
-  points[target + 2] = -y;
+  points[target + 2] = y;
 }
 
 function startMaterialSpan(

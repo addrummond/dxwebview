@@ -22,7 +22,7 @@ describe("readActorAnnotations", () => {
         location: {
           x: 128,
           y: 64,
-          z: 256
+          z: -256
         },
         objectName: "Ammo10mm0",
         rotation: {

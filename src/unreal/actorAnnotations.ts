@@ -306,7 +306,7 @@ function toViewerVector(vector: UnrealVector): UnrealVector {
   return {
     x: vector.x,
     y: vector.z,
-    z: -vector.y
+    z: vector.y
   };
 }
 
