@@ -13,12 +13,7 @@ Open the Vite URL in a Chromium-based browser. The viewer uses the File System A
 
 ## Load Deus Ex
 
-Click **Choose Folder** and select the root of an extracted Deus Ex GOTY install, for example:
-
-```text
-/Users/alex/deus_ex_goty_51757
-```
-
+Click **Choose Folder** and select the root of an extracted Deus Ex GOTY install.
 The folder should contain the usual `Maps`, `Textures`, and `System` directories. After indexing, choose a map from the left-hand map list.
 
 ## Navigate
