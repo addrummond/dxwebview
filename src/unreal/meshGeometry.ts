@@ -316,7 +316,7 @@ function triangulateLodMesh(
       const wedge = faceWedges[index];
       const vertex = faceVertices[index];
       writer.positions.push(vertex.x, vertex.y, vertex.z);
-      writer.uvs.push(-wedge.s, wedge.t);
+      writer.uvs.push(wedge.s, wedge.t);
       writer.colors.push(color.r, color.g, color.b);
     }
 
