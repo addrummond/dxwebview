@@ -6,6 +6,11 @@ import type { UnrealTextureImage } from "../unreal/textureDecoder";
 type TriangleBuffer = Float32Array<ArrayBufferLike>;
 const MOVEMENT_RAMP_SECONDS = 1;
 const VIEW_CHANGE_MIN_INTERVAL_MS = 500;
+// LodMesh vertices are decoded into a viewer-space basis with X/Z flipped relative to map actors.
+const MESH_BASIS_CORRECTION_QUATERNION = new THREE.Quaternion().setFromAxisAngle(
+  new THREE.Vector3(0, 1, 0),
+  Math.PI
+);
 
 interface ActorCirclePickTarget {
   center: THREE.Vector3;
@@ -721,7 +726,7 @@ export class ViewerScene {
     const transformed: number[] = [];
     const drawScale3D = actor.drawScale3D ?? { x: 1, y: 1, z: 1 };
 
-    this.brushQuaternion.setFromEuler(unrealRotatorEuler(actor.rotation));
+    this.brushQuaternion.copy(unrealMeshQuaternion(actor.rotation));
     this.brushMatrix.compose(
       new THREE.Vector3(actor.location.x, actor.location.y, actor.location.z),
       this.brushQuaternion,
@@ -1192,4 +1197,20 @@ function unrealRotatorEuler(rotation: SceneActorAnnotation["rotation"]): THREE.E
 
   const unit = (Math.PI * 2) / 65536;
   return euler.set(rotation.roll * unit, rotation.yaw * unit, rotation.pitch * unit, "YXZ");
+}
+
+export function unrealMeshQuaternion(rotation: SceneActorAnnotation["rotation"]): THREE.Quaternion {
+  return new THREE.Quaternion()
+    .setFromEuler(unrealMeshRotatorEuler(rotation))
+    .multiply(MESH_BASIS_CORRECTION_QUATERNION);
+}
+
+function unrealMeshRotatorEuler(rotation: SceneActorAnnotation["rotation"]): THREE.Euler {
+  const euler = new THREE.Euler(0, 0, 0, "YXZ");
+  if (!rotation) {
+    return euler;
+  }
+
+  const unit = (Math.PI * 2) / 65536;
+  return euler.set(-rotation.roll * unit, -rotation.yaw * unit, -rotation.pitch * unit, "YXZ");
 }
