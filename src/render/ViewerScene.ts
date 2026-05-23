@@ -142,6 +142,7 @@ export class ViewerScene {
     actorAnnotations: SceneActorAnnotation[] = [],
     selectedActorPath: string | null = null,
     selectedBrushGeometry: SceneBrushGeometry | null = null,
+    showOccludedActors = true,
     frameView = true
   ): void {
     this.clearContent();
@@ -174,7 +175,7 @@ export class ViewerScene {
     }
 
     if (actorAnnotations.length > 0) {
-      this.content.add(this.createActorMarkerGroup(actorAnnotations, selectedActorPath));
+      this.content.add(this.createActorMarkerGroup(actorAnnotations, selectedActorPath, showOccludedActors));
     }
 
     if (selectedBrushGeometry && selectedActorPath) {
@@ -386,15 +387,22 @@ export class ViewerScene {
     return new THREE.Mesh(geometry, material);
   }
 
-  private createActorMarkerGroup(annotations: SceneActorAnnotation[], selectedActorPath: string | null): THREE.Group {
+  private createActorMarkerGroup(
+    annotations: SceneActorAnnotation[],
+    selectedActorPath: string | null,
+    showOccludedActors: boolean
+  ): THREE.Group {
     const group = new THREE.Group();
     group.name = "actor-annotations";
 
     for (const annotation of annotations) {
       const isSelected = annotation.path === selectedActorPath;
-      const isOccludedBrush =
-        annotation.category === "Brush" &&
-        this.isPointOccluded(new THREE.Vector3(annotation.location.x, annotation.location.y, annotation.location.z));
+      const isOccluded = this.isPointOccluded(
+        new THREE.Vector3(annotation.location.x, annotation.location.y, annotation.location.z)
+      );
+      if (isOccluded && !showOccludedActors && !isSelected) {
+        continue;
+      }
       const radius = THREE.MathUtils.clamp(
         Math.max(annotation.collisionRadius ?? 32, (annotation.collisionHeight ?? 0) * 0.5) * 0.35,
         8,
@@ -402,12 +410,12 @@ export class ViewerScene {
       );
       const geometry = new THREE.SphereGeometry(isSelected ? radius * 1.25 : radius, 12, 8);
       const material = new THREE.MeshBasicMaterial({
-        color: isSelected ? 0xfff06a : isOccludedBrush ? 0xcfd6dc : actorCategoryColor(annotation.category),
+        color: isSelected ? 0xfff06a : isOccluded ? 0xcfd6dc : actorCategoryColor(annotation.category),
         depthTest: false,
         depthWrite: false,
-        opacity: isSelected ? (isOccludedBrush ? 0.65 : 1) : isOccludedBrush ? 0.22 : 0.88,
+        opacity: isSelected ? (isOccluded ? 0.65 : 1) : isOccluded ? 0.22 : 0.88,
         transparent: true,
-        wireframe: isOccludedBrush
+        wireframe: isOccluded
       });
       const marker = new THREE.Mesh(geometry, material);
       marker.name = `${annotation.category}: ${annotation.className}.${annotation.objectName}`;

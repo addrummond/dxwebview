@@ -14,6 +14,7 @@ import type { UnrealActorAnnotation, UnrealActorCategory } from "./unreal/actorA
 interface AppState {
   actorAnnotationsVisible: boolean;
   index: PackageIndex | null;
+  nonVisibleActorAnnotationsVisible: boolean;
   selectedActorPath: string | null;
   selectedMap: IndexedPackageWithSummary | null;
   surfaceVisibility: TriangleLayerVisibility;
@@ -24,6 +25,7 @@ interface AppState {
 const state: AppState = {
   actorAnnotationsVisible: true,
   index: null,
+  nonVisibleActorAnnotationsVisible: true,
   selectedActorPath: null,
   selectedMap: null,
   surfaceVisibility: {
@@ -73,6 +75,7 @@ app.innerHTML = `
           <label class="toggle"><input id="toggle-backdrop" type="checkbox" /> Backdrops</label>
           <label class="toggle"><input id="toggle-invisible" type="checkbox" /> Invisible</label>
           <label class="toggle"><input id="toggle-actors" type="checkbox" /> Actors</label>
+          <label class="toggle"><input id="toggle-non-visible-actors" type="checkbox" /> Non-visible actors</label>
           <button id="reset-view" type="button">Reset</button>
         </div>
       </div>
@@ -100,6 +103,7 @@ const solidToggleElement = getElement<HTMLInputElement>("toggle-solid");
 const backdropToggleElement = getElement<HTMLInputElement>("toggle-backdrop");
 const invisibleToggleElement = getElement<HTMLInputElement>("toggle-invisible");
 const actorsToggleElement = getElement<HTMLInputElement>("toggle-actors");
+const nonVisibleActorsToggleElement = getElement<HTMLInputElement>("toggle-non-visible-actors");
 const resetViewButton = getElement<HTMLButtonElement>("reset-view");
 
 const viewerScene = new ViewerScene(viewportElement);
@@ -130,6 +134,11 @@ invisibleToggleElement.addEventListener("change", () => {
 actorsToggleElement.addEventListener("change", () => {
   state.actorAnnotationsVisible = actorsToggleElement.checked;
   refreshSelectedGeometry();
+});
+
+nonVisibleActorsToggleElement.addEventListener("change", () => {
+  state.nonVisibleActorAnnotationsVisible = nonVisibleActorsToggleElement.checked;
+  refreshSelectedGeometry({ frameView: false });
 });
 
 resetViewButton.addEventListener("click", () => {
@@ -326,6 +335,7 @@ function refreshSelectedGeometry(options: { frameView?: boolean } = {}): void {
     state.actorAnnotationsVisible ? selectedMap.actorAnnotations : [],
     state.selectedActorPath,
     selectedBrushGeometry(selectedMap),
+    state.nonVisibleActorAnnotationsVisible,
     frameView
   );
   setStatus(
@@ -428,11 +438,14 @@ function renderViewportControls(): void {
   backdropToggleElement.checked = state.surfaceVisibility.backdrop;
   invisibleToggleElement.checked = state.surfaceVisibility.invisible;
   actorsToggleElement.checked = state.actorAnnotationsVisible;
+  nonVisibleActorsToggleElement.checked = state.nonVisibleActorAnnotationsVisible;
 
   solidToggleElement.disabled = !hasGeometry || geometry?.triangles.length === 0;
   backdropToggleElement.disabled = !hasGeometry || geometry?.backdropTriangles.length === 0;
   invisibleToggleElement.disabled = !hasGeometry || geometry?.invisibleTriangles.length === 0;
   actorsToggleElement.disabled = !state.selectedMap || state.selectedMap.actorAnnotations.length === 0;
+  nonVisibleActorsToggleElement.disabled =
+    !state.actorAnnotationsVisible || !state.selectedMap || state.selectedMap.actorAnnotations.length === 0;
   resetViewButton.disabled = !hasGeometry;
 }
 
