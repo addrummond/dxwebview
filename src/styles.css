@@ -370,6 +370,11 @@ h2 {
   background: #273037;
 }
 
+.actor-row-button[data-selected="true"] {
+  border-color: #d7c766;
+  background: #38351f;
+}
+
 .actor-title {
   display: inline-flex;
   align-items: center;

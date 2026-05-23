@@ -14,6 +14,7 @@ import type { UnrealActorAnnotation, UnrealActorCategory } from "./unreal/actorA
 interface AppState {
   actorAnnotationsVisible: boolean;
   index: PackageIndex | null;
+  selectedActorPath: string | null;
   selectedMap: IndexedPackageWithSummary | null;
   surfaceVisibility: TriangleLayerVisibility;
   status: string;
@@ -23,6 +24,7 @@ interface AppState {
 const state: AppState = {
   actorAnnotationsVisible: true,
   index: null,
+  selectedActorPath: null,
   selectedMap: null,
   surfaceVisibility: {
     backdrop: false,
@@ -140,10 +142,14 @@ inspectorContentElement.addEventListener("click", (event) => {
     return;
   }
 
+  state.actorAnnotationsVisible = true;
+  state.selectedActorPath = actor.path;
+  refreshSelectedGeometry();
   viewerScene.focusPoint(
     actor.location,
     Math.max(actor.collisionRadius ?? 0, actor.collisionHeight ?? 0, actor.category === "Brush" ? 96 : 48)
   );
+  render();
 });
 
 function getElement<T extends HTMLElement>(id: string): T {
@@ -170,6 +176,7 @@ async function chooseInstallFolder(): Promise<void> {
 
     const index = await buildPackageIndex(root);
     state.index = index;
+    state.selectedActorPath = null;
     state.selectedMap = null;
     viewerScene.showPlaceholder();
     setStatus(`Indexed ${index.packages.length} Unreal package files from ${index.rootName}.`);
@@ -186,12 +193,14 @@ async function chooseInstallFolder(): Promise<void> {
 
 async function selectMap(entry: IndexedPackage): Promise<void> {
   clearError();
+  state.selectedActorPath = null;
   state.selectedMap = null;
   setStatus(`Reading ${entry.path}...`);
   render();
 
   try {
     state.selectedMap = await readIndexedPackageSummary(entry, state.index ?? undefined);
+    state.selectedActorPath = null;
     if (state.selectedMap.geometry && totalTriangleCount(state.selectedMap.geometry) > 0) {
       state.surfaceVisibility = defaultSurfaceVisibility(state.selectedMap.geometry);
       refreshSelectedGeometry();
@@ -268,7 +277,8 @@ function refreshSelectedGeometry(): void {
     },
     state.surfaceVisibility,
     selectedMap.textures,
-    state.actorAnnotationsVisible ? selectedMap.actorAnnotations : []
+    state.actorAnnotationsVisible ? selectedMap.actorAnnotations : [],
+    state.selectedActorPath
   );
   setStatus(
     `Rendered ${displayedTriangleCount(geometry, state.surfaceVisibility)} of ${totalTriangleCount(
@@ -448,7 +458,9 @@ function renderActorAnnotations(annotations: UnrealActorAnnotation[]): string {
           .map(
             (actor) => `
               <li>
-                <button class="actor-row-button" type="button" data-actor-path="${escapeHtml(actor.path)}">
+                <button class="actor-row-button" type="button" data-actor-path="${escapeHtml(
+                  actor.path
+                )}" data-selected="${String(actor.path === state.selectedActorPath)}">
                   <span class="actor-title">
                     <span class="actor-dot" data-category="${escapeHtml(actor.category)}"></span>
                     ${escapeHtml(actor.objectName)}

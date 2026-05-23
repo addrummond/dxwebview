@@ -41,6 +41,7 @@ export interface SceneActorAnnotation {
     z: number;
   };
   objectName: string;
+  path: string;
 }
 
 export class ViewerScene {
@@ -115,7 +116,8 @@ export class ViewerScene {
     layers: TriangleLayers,
     visibility: TriangleLayerVisibility,
     textures = new Map<string, UnrealTextureImage>(),
-    actorAnnotations: SceneActorAnnotation[] = []
+    actorAnnotations: SceneActorAnnotation[] = [],
+    selectedActorPath: string | null = null
   ): void {
     this.clearContent();
     this.placeholder.visible = false;
@@ -143,7 +145,7 @@ export class ViewerScene {
     }
 
     if (actorAnnotations.length > 0) {
-      this.content.add(this.createActorMarkerGroup(actorAnnotations));
+      this.content.add(this.createActorMarkerGroup(actorAnnotations, selectedActorPath));
     }
 
     this.frameTargets = frameTargets;
@@ -341,27 +343,45 @@ export class ViewerScene {
     return new THREE.Mesh(geometry, material);
   }
 
-  private createActorMarkerGroup(annotations: SceneActorAnnotation[]): THREE.Group {
+  private createActorMarkerGroup(annotations: SceneActorAnnotation[], selectedActorPath: string | null): THREE.Group {
     const group = new THREE.Group();
     group.name = "actor-annotations";
 
     for (const annotation of annotations) {
+      const isSelected = annotation.path === selectedActorPath;
       const radius = THREE.MathUtils.clamp(
         Math.max(annotation.collisionRadius ?? 32, (annotation.collisionHeight ?? 0) * 0.5) * 0.35,
         8,
         annotation.category === "Brush" ? 42 : 28
       );
-      const geometry = new THREE.SphereGeometry(radius, 12, 8);
+      const geometry = new THREE.SphereGeometry(isSelected ? radius * 1.25 : radius, 12, 8);
       const material = new THREE.MeshBasicMaterial({
-        color: actorCategoryColor(annotation.category),
+        color: isSelected ? 0xfff06a : actorCategoryColor(annotation.category),
         depthTest: false,
-        opacity: 0.88,
+        opacity: isSelected ? 1 : 0.88,
         transparent: true
       });
       const marker = new THREE.Mesh(geometry, material);
       marker.name = `${annotation.category}: ${annotation.className}.${annotation.objectName}`;
       marker.position.set(annotation.location.x, annotation.location.y, annotation.location.z);
+      marker.renderOrder = isSelected ? 20 : 10;
       group.add(marker);
+
+      if (isSelected) {
+        const haloGeometry = new THREE.SphereGeometry(radius * 1.9, 16, 10);
+        const haloMaterial = new THREE.MeshBasicMaterial({
+          color: 0xffffff,
+          depthTest: false,
+          opacity: 0.32,
+          transparent: true,
+          wireframe: true
+        });
+        const halo = new THREE.Mesh(haloGeometry, haloMaterial);
+        halo.name = `selected ${marker.name}`;
+        halo.position.copy(marker.position);
+        halo.renderOrder = 21;
+        group.add(halo);
+      }
     }
 
     return group;
