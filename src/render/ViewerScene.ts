@@ -101,18 +101,15 @@ export class ViewerScene {
   private readonly markerWorldPosition = new THREE.Vector3();
   private readonly markerRadiusWorldPosition = new THREE.Vector3();
   private readonly projectedMarkerRadiusPosition = new THREE.Vector3();
-  private readonly occlusionRaycaster = new THREE.Raycaster();
   private readonly brushMatrix = new THREE.Matrix4();
   private readonly brushQuaternion = new THREE.Quaternion();
   private readonly brushScale = new THREE.Vector3(1, 1, 1);
   private readonly triangleA = new THREE.Vector3();
   private readonly triangleB = new THREE.Vector3();
   private readonly triangleC = new THREE.Vector3();
-  private readonly triangleDirection = new THREE.Vector3();
   private brushActorPaths = new Set<string>();
   private brushCirclePickTargets: BrushCirclePickTarget[] = [];
   private actorMarkerTargets: THREE.Object3D[] = [];
-  private occluderTargets: THREE.Object3D[] = [];
   private frameTargets: THREE.Object3D[] = [];
   private isMouseLooking = false;
   private actorSelectHandler: ((actorPath: string) => void) | null = null;
@@ -182,7 +179,6 @@ export class ViewerScene {
   ): void {
     this.clearContent();
     this.placeholder.visible = false;
-    this.occluderTargets = [];
     this.brushActorPaths = new Set(brushGeometries.map((brushGeometry) => brushGeometry.actor.path));
     const frameTargets: THREE.Object3D[] = [];
 
@@ -191,7 +187,6 @@ export class ViewerScene {
       const wire = this.createWireMesh(layers.solid.positions, 0x263238);
       this.content.add(mesh, wire);
       frameTargets.push(mesh);
-      this.occluderTargets.push(mesh);
     }
 
     if (visibility.backdrop && layers.backdrop.positions.length > 0) {
@@ -199,7 +194,6 @@ export class ViewerScene {
       const backdropWire = this.createWireMesh(layers.backdrop.positions, 0x4e6c7c);
       this.content.add(backdrop, backdropWire);
       frameTargets.push(backdrop);
-      this.occluderTargets.push(backdrop);
     }
 
     if (visibility.invisible && layers.invisible.positions.length > 0) {
@@ -207,7 +201,6 @@ export class ViewerScene {
       const invisibleWire = this.createWireMesh(layers.invisible.positions, 0x8c6247);
       this.content.add(invisible, invisibleWire);
       frameTargets.push(invisible);
-      this.occluderTargets.push(invisible);
     }
 
     for (const brushGeometry of brushGeometries) {
@@ -469,12 +462,6 @@ export class ViewerScene {
 
     for (const annotation of annotations) {
       const isSelected = annotation.path === selectedActorPath;
-      const isOccluded = this.isPointOccluded(
-        new THREE.Vector3(annotation.location.x, annotation.location.y, annotation.location.z)
-      );
-      if (isOccluded && !showOccludedActors && !isSelected) {
-        continue;
-      }
       const radius = THREE.MathUtils.clamp(
         Math.max(annotation.collisionRadius ?? 32, (annotation.collisionHeight ?? 0) * 0.5) * 0.35,
         8,
@@ -482,12 +469,11 @@ export class ViewerScene {
       );
       const geometry = new THREE.SphereGeometry(isSelected ? radius * 1.25 : radius, 12, 8);
       const material = new THREE.MeshBasicMaterial({
-        color: isSelected ? 0xfff06a : isOccluded ? 0xcfd6dc : actorCategoryColor(annotation.category),
-        depthTest: false,
+        color: isSelected ? 0xfff06a : actorCategoryColor(annotation.category),
+        depthTest: true,
         depthWrite: false,
-        opacity: isSelected ? (isOccluded ? 0.65 : 1) : isOccluded ? 0.22 : 0.88,
-        transparent: true,
-        wireframe: isOccluded
+        opacity: isSelected ? 1 : 0.88,
+        transparent: true
       });
       const marker = new THREE.Mesh(geometry, material);
       marker.name = `${annotation.category}: ${annotation.className}.${annotation.objectName}`;
@@ -503,6 +489,22 @@ export class ViewerScene {
         });
       }
       group.add(marker);
+
+      if (showOccludedActors || isSelected) {
+        const overlayMaterial = new THREE.MeshBasicMaterial({
+          color: isSelected ? 0xffffff : 0xcfd6dc,
+          depthTest: false,
+          depthWrite: false,
+          opacity: isSelected ? 0.28 : 0.16,
+          transparent: true,
+          wireframe: true
+        });
+        const overlay = new THREE.Mesh(geometry.clone(), overlayMaterial);
+        overlay.name = `non-visible overlay ${marker.name}`;
+        overlay.position.copy(marker.position);
+        overlay.renderOrder = isSelected ? 21 : 11;
+        group.add(overlay);
+      }
 
       if (isSelected) {
         const haloGeometry = new THREE.SphereGeometry(radius * 1.9, 16, 10);
@@ -682,25 +684,6 @@ export class ViewerScene {
     }
 
     return new Float32Array(transformed);
-  }
-
-  private isPointOccluded(center: THREE.Vector3): boolean {
-    if (this.occluderTargets.length === 0) {
-      return false;
-    }
-
-    this.triangleDirection.copy(center).sub(this.camera.position);
-    const targetDistance = this.triangleDirection.length();
-    if (targetDistance <= 0) {
-      return false;
-    }
-
-    this.triangleDirection.multiplyScalar(1 / targetDistance);
-    this.occlusionRaycaster.set(this.camera.position, this.triangleDirection);
-    this.occlusionRaycaster.near = 1;
-    this.occlusionRaycaster.far = Math.max(targetDistance - 4, 1);
-
-    return this.occlusionRaycaster.intersectObjects(this.occluderTargets, false).length > 0;
   }
 
   private createPositionGeometry(positions: Float32Array): THREE.BufferGeometry {
