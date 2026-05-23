@@ -2,7 +2,7 @@
 
 A browser-based Deus Ex GOTY map viewer for inspecting UE1 `.dx` maps, BSP geometry, decoded textures, actor markers, and rendered actor meshes.
 
-Try it: **[https://dxwebview.pages.dev/](https://dxwebview.pages.dev/)**
+Try it: **[https://dxwebview.pages.dev](https://dxwebview.pages.dev/)**
 
 ## Run
 
