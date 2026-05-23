@@ -392,6 +392,9 @@ export class ViewerScene {
 
     for (const annotation of annotations) {
       const isSelected = annotation.path === selectedActorPath;
+      const isOccludedBrush =
+        annotation.category === "Brush" &&
+        this.isPointOccluded(new THREE.Vector3(annotation.location.x, annotation.location.y, annotation.location.z));
       const radius = THREE.MathUtils.clamp(
         Math.max(annotation.collisionRadius ?? 32, (annotation.collisionHeight ?? 0) * 0.5) * 0.35,
         8,
@@ -399,11 +402,12 @@ export class ViewerScene {
       );
       const geometry = new THREE.SphereGeometry(isSelected ? radius * 1.25 : radius, 12, 8);
       const material = new THREE.MeshBasicMaterial({
-        color: isSelected ? 0xfff06a : actorCategoryColor(annotation.category),
+        color: isSelected ? 0xfff06a : isOccludedBrush ? 0xcfd6dc : actorCategoryColor(annotation.category),
         depthTest: false,
         depthWrite: false,
-        opacity: isSelected ? 1 : 0.88,
-        transparent: true
+        opacity: isSelected ? (isOccludedBrush ? 0.65 : 1) : isOccludedBrush ? 0.22 : 0.88,
+        transparent: true,
+        wireframe: isOccludedBrush
       });
       const marker = new THREE.Mesh(geometry, material);
       marker.name = `${annotation.category}: ${annotation.className}.${annotation.objectName}`;
@@ -506,7 +510,7 @@ export class ViewerScene {
         .applyMatrix4(this.brushMatrix);
       this.triangleCenter.copy(this.triangleA).add(this.triangleB).add(this.triangleC).multiplyScalar(1 / 3);
 
-      const target = this.isBrushTriangleOccluded(this.triangleCenter) ? hidden : visible;
+      const target = this.isPointOccluded(this.triangleCenter) ? hidden : visible;
       target.push(
         this.triangleA.x,
         this.triangleA.y,
@@ -526,7 +530,7 @@ export class ViewerScene {
     };
   }
 
-  private isBrushTriangleOccluded(center: THREE.Vector3): boolean {
+  private isPointOccluded(center: THREE.Vector3): boolean {
     if (this.occluderTargets.length === 0) {
       return false;
     }
