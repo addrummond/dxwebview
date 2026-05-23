@@ -354,6 +354,22 @@ h2 {
   gap: 3px;
 }
 
+.actor-row-button {
+  display: grid;
+  gap: 3px;
+  width: 100%;
+  min-height: 0;
+  padding: 7px 8px;
+  border-color: #303941;
+  background: #20262b;
+  text-align: left;
+}
+
+.actor-row-button:hover {
+  border-color: #5e7b84;
+  background: #273037;
+}
+
 .actor-title {
   display: inline-flex;
   align-items: center;
@@ -393,6 +409,15 @@ h2 {
 
 .actor-dot[data-category="Audio"] {
   background: #a184e6;
+}
+
+.actor-dot[data-category="Brush"],
+.category-pill[data-category="Brush"] {
+  border-color: #32796f;
+}
+
+.actor-dot[data-category="Brush"] {
+  background: #46b7a8;
 }
 
 .actor-dot[data-category="Character"],

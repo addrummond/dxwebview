@@ -34,6 +34,25 @@ describe("readActorAnnotations", () => {
     ]);
   });
 
+  it("classifies brushes and reads CSG metadata", () => {
+    const buffer = makeBrushPackageBuffer();
+    const annotations = readActorAnnotations(buffer, readPackageTables(buffer));
+
+    expect(annotations).toEqual([
+      expect.objectContaining({
+        brush: {
+          brushModel: null,
+          csgOperation: "Subtract",
+          group: "Lobby",
+          polyFlags: 0x40000008
+        },
+        category: "Brush",
+        className: "Brush",
+        objectName: "Brush12"
+      })
+    ]);
+  });
+
   it.skipIf(!existsSync(trainingPath))("finds placed actors in a real Deus Ex map", async () => {
     const file = await readFile(trainingPath);
     const buffer = file.buffer.slice(file.byteOffset, file.byteOffset + file.byteLength);
@@ -41,6 +60,7 @@ describe("readActorAnnotations", () => {
 
     expect(annotations.length).toBeGreaterThan(100);
     expect(annotations.some((annotation) => annotation.category === "Light")).toBe(true);
+    expect(annotations.some((annotation) => annotation.category === "Brush" && annotation.brush?.csgOperation)).toBe(true);
   });
 });
 
@@ -110,6 +130,62 @@ function makeActorPackageBuffer(): ArrayBuffer {
   return bytes.buffer;
 }
 
+function makeBrushPackageBuffer(): ArrayBuffer {
+  const bytes = new Uint8Array(512);
+  const view = new DataView(bytes.buffer);
+  const nameTable: number[] = [];
+  const importTable: number[] = [];
+  const exportTable: number[] = [];
+  const actorSerial: number[] = [];
+
+  for (const name of ["None", "Engine", "Class", "Brush", "Brush12", "Location", "CsgOper", "PolyFlags", "Group", "Lobby"]) {
+    writeString(nameTable, name);
+    writeUint32(nameTable, 0);
+  }
+
+  writeCompact(importTable, 1);
+  writeCompact(importTable, 2);
+  writeInt32(importTable, 0);
+  writeCompact(importTable, 3);
+
+  writeVectorProperty(actorSerial, 5, 16, 32, 48);
+  writeByteProperty(actorSerial, 6, 2);
+  writeIntProperty(actorSerial, 7, 0x40000008);
+  writeNameProperty(actorSerial, 8, 9);
+  writeCompact(actorSerial, 0);
+
+  const nameOffset = 64;
+  const importOffset = nameOffset + nameTable.length;
+  const exportOffset = importOffset + importTable.length;
+  const serialOffset = exportOffset + 16;
+
+  writeCompact(exportTable, -1);
+  writeCompact(exportTable, 0);
+  writeInt32(exportTable, 0);
+  writeCompact(exportTable, 4);
+  writeUint32(exportTable, 0);
+  writeCompact(exportTable, actorSerial.length);
+  writeCompact(exportTable, serialOffset);
+
+  view.setUint32(0, UNREAL_PACKAGE_MAGIC, true);
+  view.setUint16(4, 68, true);
+  view.setUint16(6, 0, true);
+  view.setUint32(8, 1, true);
+  view.setInt32(12, 10, true);
+  view.setInt32(16, nameOffset, true);
+  view.setInt32(20, 1, true);
+  view.setInt32(24, exportOffset, true);
+  view.setInt32(28, 1, true);
+  view.setInt32(32, importOffset, true);
+
+  bytes.set(nameTable, nameOffset);
+  bytes.set(importTable, importOffset);
+  bytes.set(exportTable, exportOffset);
+  bytes.set(actorSerial, serialOffset);
+
+  return bytes.buffer;
+}
+
 function writeVectorProperty(bytes: number[], nameIndex: number, x: number, y: number, z: number): void {
   writeCompact(bytes, nameIndex);
   bytes.push((3 << 4) | 11);
@@ -130,6 +206,24 @@ function writeFloatProperty(bytes: number[], nameIndex: number, value: number): 
   writeCompact(bytes, nameIndex);
   bytes.push((2 << 4) | 4);
   writeFloat32(bytes, value);
+}
+
+function writeByteProperty(bytes: number[], nameIndex: number, value: number): void {
+  writeCompact(bytes, nameIndex);
+  bytes.push(1);
+  bytes.push(value);
+}
+
+function writeIntProperty(bytes: number[], nameIndex: number, value: number): void {
+  writeCompact(bytes, nameIndex);
+  bytes.push((2 << 4) | 2);
+  writeInt32(bytes, value);
+}
+
+function writeNameProperty(bytes: number[], nameIndex: number, valueNameIndex: number): void {
+  writeCompact(bytes, nameIndex);
+  bytes.push(6);
+  writeCompact(bytes, valueNameIndex);
 }
 
 function writeCompact(bytes: number[], value: number): void {

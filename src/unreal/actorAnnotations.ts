@@ -5,6 +5,7 @@ import type { UnrealExportEntry, UnrealPackageTables } from "./packageTables";
 export type UnrealActorCategory =
   | "Ammo"
   | "Audio"
+  | "Brush"
   | "Character"
   | "Decoration"
   | "Item"
@@ -29,6 +30,7 @@ export interface UnrealRotator {
 }
 
 export interface UnrealActorAnnotation {
+  brush: UnrealBrushMetadata | null;
   category: UnrealActorCategory;
   className: string;
   classPath: string;
@@ -40,7 +42,14 @@ export interface UnrealActorAnnotation {
   rotation: UnrealRotator | null;
 }
 
-type UnrealPropertyValue = number | string | UnrealVector | UnrealRotator;
+export interface UnrealBrushMetadata {
+  brushModel: string | null;
+  csgOperation: string | null;
+  group: string | null;
+  polyFlags: number | null;
+}
+
+type UnrealPropertyValue = number | string | boolean | UnrealVector | UnrealRotator;
 
 interface PropertyTag {
   name: string;
@@ -52,6 +61,7 @@ const PROPERTY_TYPE_BYTE = 1;
 const PROPERTY_TYPE_INT = 2;
 const PROPERTY_TYPE_BOOL = 3;
 const PROPERTY_TYPE_FLOAT = 4;
+const PROPERTY_TYPE_OBJECT = 5;
 const PROPERTY_TYPE_NAME = 6;
 const PROPERTY_TYPE_STRING = 7;
 const PROPERTY_TYPE_STRUCT = 10;
@@ -86,8 +96,10 @@ export function readActorAnnotations(buffer: ArrayBuffer, tables: UnrealPackageT
     const rotation = properties.get("rotation");
     const collisionRadius = properties.get("collisionradius");
     const collisionHeight = properties.get("collisionheight");
+    const brush = readBrushMetadata(properties, className);
 
     annotations.push({
+      brush,
       category: categorizeActor(className, entry.objectName),
       className,
       classPath,
@@ -192,15 +204,14 @@ function readPropertyTag(
 
   const info = reader.readUint8();
   const type = info & 0x0f;
+  let structName = "";
+  if (type === PROPERTY_TYPE_STRUCT) {
+    structName = tables.names[reader.readCompactIndex()]?.name ?? "";
+  }
   const size = type === PROPERTY_TYPE_BOOL ? 0 : readPropertySize(reader, (info >> 4) & 0x07);
 
   if ((info & 0x80) !== 0) {
     reader.readCompactIndex();
-  }
-
-  let structName = "";
-  if (type === PROPERTY_TYPE_STRUCT) {
-    structName = tables.names[reader.readCompactIndex()]?.name ?? "";
   }
 
   const valueStart = reader.offset;
@@ -255,11 +266,15 @@ function readPropertyValue(
   }
 
   if (type === PROPERTY_TYPE_BOOL) {
-    return 1;
+    return true;
   }
 
   if (type === PROPERTY_TYPE_BYTE && size === 1) {
     return reader.readUint8();
+  }
+
+  if (type === PROPERTY_TYPE_OBJECT) {
+    return resolveObjectPath(reader.readCompactIndex(), tables);
   }
 
   if (type === PROPERTY_TYPE_NAME) {
@@ -302,6 +317,27 @@ function shouldSkipExport(className: string): boolean {
   return className === "Model" || className === "Level" || className === "Polys";
 }
 
+function readBrushMetadata(
+  properties: Map<string, UnrealPropertyValue>,
+  className: string
+): UnrealBrushMetadata | null {
+  if (!className.toLowerCase().includes("brush")) {
+    return null;
+  }
+
+  const csgOper = properties.get("csgoper");
+  const group = properties.get("group");
+  const polyFlags = properties.get("polyflags");
+  const brushModel = properties.get("brush");
+
+  return {
+    brushModel: typeof brushModel === "string" ? brushModel : null,
+    csgOperation: typeof csgOper === "number" ? csgOperationName(csgOper) : null,
+    group: typeof group === "string" ? group : null,
+    polyFlags: typeof polyFlags === "number" ? polyFlags : null
+  };
+}
+
 function toViewerVector(vector: UnrealVector): UnrealVector {
   return {
     x: vector.x,
@@ -321,6 +357,9 @@ function isRotator(value: UnrealPropertyValue | undefined): value is UnrealRotat
 function categorizeActor(className: string, objectName: string): UnrealActorCategory {
   const key = `${className} ${objectName}`.toLowerCase();
 
+  if (key.includes("brush")) {
+    return "Brush";
+  }
   if (key.includes("ammo")) {
     return "Ammo";
   }
@@ -406,10 +445,28 @@ function categorySortKey(category: UnrealActorCategory): number {
     "Key",
     "Trigger",
     "Mover",
+    "Brush",
     "Light",
     "Decoration",
     "Audio",
     "Navigation",
     "Other"
   ].indexOf(category);
+}
+
+function csgOperationName(value: number): string {
+  switch (value) {
+    case 0:
+      return "Active";
+    case 1:
+      return "Add";
+    case 2:
+      return "Subtract";
+    case 3:
+      return "Intersect";
+    case 4:
+      return "Deintersect";
+    default:
+      return `Unknown ${value}`;
+  }
 }

@@ -32,6 +32,7 @@ export interface TriangleLayerVisibility {
 
 export interface SceneActorAnnotation {
   category: string;
+  collisionHeight: number | null;
   className: string;
   collisionRadius: number | null;
   location: {
@@ -160,6 +161,24 @@ export class ViewerScene {
 
   resetView(): void {
     this.frameLoadedContent();
+  }
+
+  focusPoint(point: { x: number; y: number; z: number }, radius = 64): void {
+    const center = new THREE.Vector3(point.x, point.y, point.z);
+    const distance = Math.max(radius * 5, 180);
+
+    this.camera.position.set(
+      center.x + distance * 0.75,
+      center.y + distance * 0.45,
+      center.z + distance * 0.9
+    );
+    this.movementSpeed = Math.max(distance * 1.25, 250);
+    this.camera.near = Math.max(distance / 1000, 1);
+    this.camera.far = Math.max(distance * 30, 1000);
+    this.camera.lookAt(center);
+    this.camera.updateProjectionMatrix();
+    this.syncLookAnglesFromCamera();
+    this.renderer.domElement.focus();
   }
 
   dispose(): void {
@@ -327,7 +346,11 @@ export class ViewerScene {
     group.name = "actor-annotations";
 
     for (const annotation of annotations) {
-      const radius = THREE.MathUtils.clamp((annotation.collisionRadius ?? 32) * 0.35, 8, 28);
+      const radius = THREE.MathUtils.clamp(
+        Math.max(annotation.collisionRadius ?? 32, (annotation.collisionHeight ?? 0) * 0.5) * 0.35,
+        8,
+        annotation.category === "Brush" ? 42 : 28
+      );
       const geometry = new THREE.SphereGeometry(radius, 12, 8);
       const material = new THREE.MeshBasicMaterial({
         color: actorCategoryColor(annotation.category),
@@ -653,6 +676,8 @@ function actorCategoryColor(category: string): number {
       return 0xf0c84b;
     case "Audio":
       return 0xa184e6;
+    case "Brush":
+      return 0x46b7a8;
     case "Character":
       return 0x5fb4ff;
     case "Decoration":

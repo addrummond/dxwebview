@@ -131,6 +131,21 @@ resetViewButton.addEventListener("click", () => {
   viewerScene.resetView();
 });
 
+inspectorContentElement.addEventListener("click", (event) => {
+  const button = (event.target as HTMLElement).closest<HTMLButtonElement>("[data-actor-path]");
+  const actorPath = button?.dataset.actorPath;
+  const actor = state.selectedMap?.actorAnnotations.find((annotation) => annotation.path === actorPath);
+
+  if (!actor) {
+    return;
+  }
+
+  viewerScene.focusPoint(
+    actor.location,
+    Math.max(actor.collisionRadius ?? 0, actor.collisionHeight ?? 0, actor.category === "Brush" ? 96 : 48)
+  );
+});
+
 function getElement<T extends HTMLElement>(id: string): T {
   const element = document.getElementById(id);
   if (!element) {
@@ -429,28 +444,50 @@ function renderActorAnnotations(annotations: UnrealActorAnnotation[]): string {
       <h3>Actor Annotations</h3>
       <ol class="actor-list">
         ${annotations
-          .slice(0, 60)
+          .slice(0, 200)
           .map(
             (actor) => `
               <li>
-                <span class="actor-title">
-                  <span class="actor-dot" data-category="${escapeHtml(actor.category)}"></span>
-                  ${escapeHtml(actor.objectName)}
-                </span>
-                <span class="actor-meta">${escapeHtml(actor.category)} · ${escapeHtml(actor.classPath)}</span>
-                <span class="actor-meta">${formatVector(actor.location)}</span>
+                <button class="actor-row-button" type="button" data-actor-path="${escapeHtml(actor.path)}">
+                  <span class="actor-title">
+                    <span class="actor-dot" data-category="${escapeHtml(actor.category)}"></span>
+                    ${escapeHtml(actor.objectName)}
+                  </span>
+                  <span class="actor-meta">${escapeHtml(actor.category)} · ${escapeHtml(actor.classPath)}</span>
+                  ${renderActorMetadata(actor)}
+                  <span class="actor-meta">${formatVector(actor.location)}</span>
+                </button>
               </li>
             `
           )
           .join("")}
       </ol>
       ${
-        annotations.length > 60
-          ? `<p class="muted actor-overflow">Showing 60 of ${annotations.length} placed actors.</p>`
+        annotations.length > 200
+          ? `<p class="muted actor-overflow">Showing 200 of ${annotations.length} placed actors.</p>`
           : ""
       }
     </section>
   `;
+}
+
+function renderActorMetadata(actor: UnrealActorAnnotation): string {
+  if (!actor.brush) {
+    return "";
+  }
+
+  const values = [
+    actor.brush.csgOperation ? `CSG ${actor.brush.csgOperation}` : null,
+    actor.brush.group ? `group ${actor.brush.group}` : null,
+    actor.brush.polyFlags !== null ? `flags 0x${actor.brush.polyFlags.toString(16)}` : null,
+    actor.brush.brushModel ? `model ${actor.brush.brushModel}` : null
+  ].filter((value): value is string => value !== null);
+
+  if (values.length === 0) {
+    return "";
+  }
+
+  return `<span class="actor-meta">${values.map(escapeHtml).join(" · ")}</span>`;
 }
 
 function renderListSection(title: string, values: string[]): string {
