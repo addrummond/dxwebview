@@ -49,11 +49,13 @@ npm run build
 
 ## Deploy
 
-The GitHub Actions workflow in `.github/workflows/cloudflare-pages.yml` builds and deploys `dist` to Cloudflare Pages on pushes to `main` and on manual workflow dispatch.
+The GitHub Actions workflow in `.github/workflows/cloudflare-pages.yml` builds and deploys `dist` to a standalone Cloudflare Pages project on pushes to `main` and on manual workflow dispatch.
 
 Configure these repository secrets:
 
 - `CLOUDFLARE_API_TOKEN`: Cloudflare API token with Pages write/edit access.
 - `CLOUDFLARE_ACCOUNT_ID`: Cloudflare account ID for the Pages project.
 
-By default, the workflow deploys to a Pages project named after the GitHub repository. To use a different project, set the repository variable `CLOUDFLARE_PAGES_PROJECT_NAME`.
+By default, the workflow deploys to a Pages project named after the GitHub repository, which gives a `dxwebview.pages.dev` deployment URL. To use a different Pages project or subdomain name, set the repository variable `CLOUDFLARE_PAGES_PROJECT_NAME`.
+
+Attach a custom subdomain in the Cloudflare Pages project settings. Do not point this workflow at an existing Pages project that is built by another site unless replacing that project's deployed output is intended.
