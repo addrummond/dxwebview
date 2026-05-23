@@ -36,7 +36,10 @@ export interface UnrealActorAnnotation {
   classPath: string;
   collisionHeight: number | null;
   collisionRadius: number | null;
+  drawScale: number;
+  drawScale3D: UnrealVector | null;
   location: UnrealVector;
+  mesh: string | null;
   objectName: string;
   path: string;
   prePivot: UnrealVector | null;
@@ -97,6 +100,9 @@ export function readActorAnnotations(buffer: ArrayBuffer, tables: UnrealPackageT
     const rotation = properties.get("rotation");
     const collisionRadius = properties.get("collisionradius");
     const collisionHeight = properties.get("collisionheight");
+    const drawScale = properties.get("drawscale");
+    const drawScale3D = properties.get("drawscale3d");
+    const mesh = properties.get("mesh");
     const prePivot = properties.get("prepivot");
     const brush = readBrushMetadata(properties, className);
 
@@ -107,7 +113,10 @@ export function readActorAnnotations(buffer: ArrayBuffer, tables: UnrealPackageT
       classPath,
       collisionHeight: typeof collisionHeight === "number" ? collisionHeight : null,
       collisionRadius: typeof collisionRadius === "number" ? collisionRadius : null,
+      drawScale: typeof drawScale === "number" ? drawScale : 1,
+      drawScale3D: isVector(drawScale3D) ? toViewerVector(drawScale3D) : null,
       location: toViewerVector(location),
+      mesh: typeof mesh === "string" ? mesh : null,
       objectName: entry.objectName,
       path: resolveObjectPath(entry.index + 1, tables),
       prePivot: isVector(prePivot) ? toViewerVector(prePivot) : null,

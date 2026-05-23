@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import type { UnrealMeshGeometry } from "../unreal/meshGeometry";
 import type { UnrealModelGeometry } from "../unreal/modelPoints";
 import type { UnrealTextureImage } from "../unreal/textureDecoder";
 
@@ -43,11 +44,18 @@ export interface SceneActorAnnotation {
   collisionHeight: number | null;
   className: string;
   collisionRadius: number | null;
+  drawScale: number;
+  drawScale3D: {
+    x: number;
+    y: number;
+    z: number;
+  } | null;
   location: {
     x: number;
     y: number;
     z: number;
   };
+  mesh: string | null;
   objectName: string;
   path: string;
   prePivot: {
@@ -66,6 +74,11 @@ export interface SceneBrushGeometry {
   actor: SceneActorAnnotation;
   geometry: UnrealModelGeometry;
   positions: TriangleBuffer;
+}
+
+export interface SceneMeshGeometry {
+  actor: SceneActorAnnotation;
+  geometry: UnrealMeshGeometry;
 }
 
 export interface ViewerViewState {
@@ -171,6 +184,7 @@ export class ViewerScene {
     actorAnnotations: SceneActorAnnotation[] = [],
     selectedActorPath: string | null = null,
     brushGeometries: SceneBrushGeometry[] = [],
+    meshGeometries: SceneMeshGeometry[] = [],
     showOccludedActors = true,
     frameView = true
   ): void {
@@ -204,6 +218,10 @@ export class ViewerScene {
       if (brushGeometry.actor.path === selectedActorPath) {
         this.content.add(this.createSelectedBrushMesh(brushGeometry));
       }
+    }
+
+    for (const meshGeometry of meshGeometries) {
+      this.content.add(this.createActorMeshMesh(meshGeometry, textures));
     }
 
     if (actorAnnotations.length > 0) {
@@ -587,6 +605,28 @@ export class ViewerScene {
     };
   }
 
+  private createActorMeshMesh(
+    geometrySource: SceneMeshGeometry,
+    textures: Map<string, UnrealTextureImage>
+  ): THREE.Group {
+    const group = new THREE.Group();
+    group.name = `actor mesh geometry: ${geometrySource.actor.objectName}`;
+    group.add(
+      this.createTriangleMesh(
+        {
+          colors: geometrySource.geometry.colors,
+          materialSpans: geometrySource.geometry.materialSpans,
+          positions: this.transformActorMeshPositions(geometrySource.geometry.positions, geometrySource.actor),
+          uvs: geometrySource.geometry.uvs
+        },
+        0xa9b0b8,
+        1,
+        textures
+      )
+    );
+    return group;
+  }
+
   private createSelectedBrushMesh(geometrySource: SceneBrushGeometry): THREE.Group {
     const actor = geometrySource.actor;
     const group = new THREE.Group();
@@ -672,6 +712,31 @@ export class ViewerScene {
         this.triangleC.y,
         this.triangleC.z
       );
+    }
+
+    return new Float32Array(transformed);
+  }
+
+  private transformActorMeshPositions(positions: TriangleBuffer, actor: SceneActorAnnotation): Float32Array {
+    const transformed: number[] = [];
+    const drawScale3D = actor.drawScale3D ?? { x: 1, y: 1, z: 1 };
+
+    this.brushQuaternion.setFromEuler(unrealRotatorEuler(actor.rotation));
+    this.brushMatrix.compose(
+      new THREE.Vector3(actor.location.x, actor.location.y, actor.location.z),
+      this.brushQuaternion,
+      this.brushScale
+    );
+
+    for (let index = 0; index + 2 < positions.length; index += 3) {
+      this.triangleA
+        .set(
+          positions[index] * actor.drawScale * drawScale3D.x,
+          positions[index + 1] * actor.drawScale * drawScale3D.y,
+          positions[index + 2] * actor.drawScale * drawScale3D.z
+        )
+        .applyMatrix4(this.brushMatrix);
+      transformed.push(this.triangleA.x, this.triangleA.y, this.triangleA.z);
     }
 
     return new Float32Array(transformed);

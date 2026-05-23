@@ -2,6 +2,7 @@ import "./styles.css";
 import {
   ViewerScene,
   type SceneBrushGeometry,
+  type SceneMeshGeometry,
   type TriangleLayerVisibility,
   type ViewerViewState
 } from "./render/ViewerScene";
@@ -402,6 +403,7 @@ function refreshSelectedGeometry(options: { frameView?: boolean } = {}): void {
     state.actorAnnotationsVisible ? displayActors : [],
     state.selectedActorPath,
     state.actorAnnotationsVisible ? actorBrushGeometries(selectedMap, displayActors) : [],
+    state.actorAnnotationsVisible ? actorMeshGeometries(selectedMap, displayActors) : [],
     state.nonVisibleActorAnnotationsVisible,
     frameView
   );
@@ -440,6 +442,23 @@ function actorBrushGeometries(
         geometry.invisibleTriangles
       ])
     });
+  }
+
+  return geometries;
+}
+
+function actorMeshGeometries(
+  selectedMap: IndexedPackageWithSummary,
+  actors: UnrealActorAnnotation[]
+): SceneMeshGeometry[] {
+  const geometries: SceneMeshGeometry[] = [];
+
+  for (const actor of actors) {
+    const geometry = selectedMap.meshGeometries.get(actor.path);
+    if (!geometry) {
+      continue;
+    }
+    geometries.push({ actor, geometry });
   }
 
   return geometries;

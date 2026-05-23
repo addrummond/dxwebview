@@ -1,4 +1,5 @@
 import { readActorAnnotations, type UnrealActorAnnotation } from "./actorAnnotations";
+import { readLodMeshGeometryByName, type UnrealMeshGeometry } from "./meshGeometry";
 import { readPackageTables, type UnrealPackageTables } from "./packageTables";
 import { readLargestModelGeometry, readModelGeometryByName, type UnrealModelGeometry } from "./modelPoints";
 import { readTextureImages, type UnrealTextureImage } from "./textureDecoder";
@@ -28,6 +29,7 @@ export interface PackageIndex {
 export interface IndexedPackageWithSummary extends IndexedPackage {
   actorAnnotations: UnrealActorAnnotation[];
   brushGeometries: Map<string, UnrealModelGeometry>;
+  meshGeometries: Map<string, UnrealMeshGeometry>;
   tables: UnrealPackageTables;
   geometry: UnrealModelGeometry | null;
   textures: Map<string, UnrealTextureImage>;
@@ -105,14 +107,18 @@ export async function readIndexedPackageSummary(
   const geometry = readLargestModelGeometry(buffer, tables);
   const actorAnnotations = readActorAnnotations(buffer, tables);
   const brushGeometries = readBrushActorGeometries(buffer, tables, actorAnnotations);
+  const meshGeometries = await readMeshActorGeometries(entry, buffer, tables, actorAnnotations, index);
+  const textures = geometry ? await loadGeometryTextures(entry, buffer, tables, geometry, index) : new Map();
+  await loadMeshGeometryTextures(textures, entry, buffer, tables, meshGeometries, index);
 
   return {
     ...entry,
     actorAnnotations,
     brushGeometries,
+    meshGeometries,
     tables,
     geometry,
-    textures: geometry ? await loadGeometryTextures(entry, buffer, tables, geometry, index) : new Map()
+    textures
   };
 }
 
@@ -141,6 +147,101 @@ function readBrushActorGeometries(
   }
 
   return geometries;
+}
+
+async function readMeshActorGeometries(
+  entry: IndexedPackage,
+  mapBuffer: ArrayBuffer,
+  mapTables: UnrealPackageTables,
+  actorAnnotations: UnrealActorAnnotation[],
+  index: PackageIndex | undefined
+): Promise<Map<string, UnrealMeshGeometry>> {
+  const geometries = new Map<string, UnrealMeshGeometry>();
+  const packageCache = new Map<string, Promise<{ buffer: ArrayBuffer; tables: UnrealPackageTables } | null>>();
+  const meshCache = new Map<string, UnrealMeshGeometry | null>();
+
+  for (const actor of actorAnnotations) {
+    if (actor.brush) {
+      continue;
+    }
+
+    const reference = meshReferenceForActor(actor);
+    if (!reference) {
+      continue;
+    }
+
+    const key = `${reference.packageName.toLowerCase()}:${reference.meshName.toLowerCase()}`;
+    if (!meshCache.has(key)) {
+      const meshPackage = await loadMeshPackage(reference.packageName, entry, mapBuffer, mapTables, index, packageCache);
+      meshCache.set(
+        key,
+        meshPackage
+          ? readLodMeshGeometryByName(meshPackage.buffer, meshPackage.tables, reference.meshName, reference.packageName)
+          : null
+      );
+    }
+
+    const geometry = meshCache.get(key);
+    if (geometry) {
+      geometries.set(actor.path, geometry);
+    }
+  }
+
+  return geometries;
+}
+
+function meshReferenceForActor(actor: UnrealActorAnnotation): { meshName: string; packageName: string } | null {
+  const meshPath = actor.mesh && actor.mesh !== "None" ? actor.mesh : actor.classPath;
+  const parts = meshPath.split(".").filter(Boolean);
+  const meshName = actor.mesh && actor.mesh !== "None" ? parts.at(-1) : actor.className;
+  const packageName = parts.length > 1 ? parts[0] : null;
+
+  if (!meshName || !packageName) {
+    return null;
+  }
+
+  return { meshName, packageName };
+}
+
+async function loadMeshPackage(
+  packageName: string,
+  entry: IndexedPackage,
+  mapBuffer: ArrayBuffer,
+  mapTables: UnrealPackageTables,
+  index: PackageIndex | undefined,
+  cache: Map<string, Promise<{ buffer: ArrayBuffer; tables: UnrealPackageTables } | null>>
+): Promise<{ buffer: ArrayBuffer; tables: UnrealPackageTables } | null> {
+  const normalized = packageName.toLowerCase();
+  if (normalized === entry.baseName.toLowerCase()) {
+    return { buffer: mapBuffer, tables: mapTables };
+  }
+
+  if (!cache.has(normalized)) {
+    cache.set(normalized, loadIndexedPackage(packageName, index));
+  }
+
+  return cache.get(normalized) ?? null;
+}
+
+async function loadIndexedPackage(
+  packageName: string,
+  index: PackageIndex | undefined
+): Promise<{ buffer: ArrayBuffer; tables: UnrealPackageTables } | null> {
+  const packageEntry =
+    index?.byKey.get(packageKey(packageName, "u")) ??
+    index?.byKey.get(packageKey(packageName, "dx")) ??
+    index?.byKey.get(packageKey(packageName, "utx")) ??
+    null;
+
+  if (!packageEntry) {
+    return null;
+  }
+
+  const buffer = await packageEntry.file.arrayBuffer();
+  return {
+    buffer,
+    tables: readPackageTables(buffer)
+  };
 }
 
 async function loadGeometryTextures(
@@ -172,6 +273,51 @@ async function loadGeometryTextures(
   }
 
   return textures;
+}
+
+async function loadMeshGeometryTextures(
+  target: Map<string, UnrealTextureImage>,
+  entry: IndexedPackage,
+  mapBuffer: ArrayBuffer,
+  mapTables: UnrealPackageTables,
+  meshGeometries: Map<string, UnrealMeshGeometry>,
+  index: PackageIndex | undefined
+): Promise<void> {
+  const requestedByPackage = new Map<string, Set<string>>();
+
+  for (const geometry of meshGeometries.values()) {
+    for (const material of geometry.materials) {
+      const packageName = material.textureName.split(".")[0];
+      if (!packageName || packageName === "None") {
+        continue;
+      }
+      let requested = requestedByPackage.get(packageName);
+      if (!requested) {
+        requested = new Set<string>();
+        requestedByPackage.set(packageName, requested);
+      }
+      requested.add(material.textureName);
+    }
+  }
+
+  for (const [packageName, requested] of requestedByPackage) {
+    if (packageName.toLowerCase() === entry.baseName.toLowerCase()) {
+      mergeTextureMaps(target, readTextureImages(mapBuffer, mapTables, entry.baseName, requested));
+      continue;
+    }
+
+    const packageEntry = findTexturePackage(index, packageName);
+    if (!packageEntry) {
+      continue;
+    }
+
+    const packageBuffer = await packageEntry.file.arrayBuffer();
+    const packageTables = readPackageTables(packageBuffer);
+    mergeTextureMaps(
+      target,
+      readTextureImages(packageBuffer, packageTables, packageEntry.baseName, requested)
+    );
+  }
 }
 
 function materialSetForPackage(
