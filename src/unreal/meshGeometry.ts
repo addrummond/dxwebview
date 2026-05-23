@@ -22,6 +22,7 @@ interface MeshFace {
 }
 
 interface MeshMaterial {
+  polyFlags: number;
   textureIndex: number;
 }
 
@@ -52,6 +53,8 @@ interface RgbColor {
 
 const BOUNDING_BOX_BYTES = 25;
 const BOUNDING_SPHERE_BYTES = 16;
+const POLY_FLAG_MASKED = 0x00000002;
+const POLY_FLAG_TRANSLUCENT = 0x00000004;
 
 export function readLodMeshGeometryByName(
   buffer: ArrayBuffer,
@@ -273,8 +276,10 @@ function readMaterials(reader: BinaryReader): MeshMaterial[] {
   const materials: MeshMaterial[] = [];
 
   for (let index = 0; index < count; index += 1) {
-    reader.readUint32();
-    materials.push({ textureIndex: reader.readUint32() });
+    materials.push({
+      polyFlags: reader.readUint32(),
+      textureIndex: reader.readUint32()
+    });
   }
 
   return materials;
@@ -310,7 +315,7 @@ function triangulateLodMesh(
 
     const textureName = textureNameForFace(face, materials, textures);
     const color = colorForTexture(textureName);
-    startMaterialSpan(writer, textureName);
+    startMaterialSpan(writer, textureName, renderModeForMaterial(face, materials));
 
     for (let index = 0; index < faceWedges.length; index += 1) {
       const wedge = faceWedges[index];
@@ -355,15 +360,24 @@ function textureNameForFace(face: MeshFace, materials: MeshMaterial[], textures:
   return textures[textureIndex] ?? "None";
 }
 
-function startMaterialSpan(layer: TriangleLayerWriter, textureName: string): void {
+function startMaterialSpan(
+  layer: TriangleLayerWriter,
+  textureName: string,
+  renderMode: UnrealTriangleMaterialSpan["renderMode"]
+): void {
   const start = layer.positions.length / 3;
   const previous = layer.materialSpans.at(-1);
 
-  if (previous && previous.start + previous.count === start && previous.textureName === textureName) {
+  if (
+    previous &&
+    previous.start + previous.count === start &&
+    previous.textureName === textureName &&
+    previous.renderMode === renderMode
+  ) {
     return;
   }
 
-  layer.materialSpans.push({ count: 0, renderMode: "opaque", start, textureName });
+  layer.materialSpans.push({ count: 0, renderMode, start, textureName });
 }
 
 function extendMaterialSpan(layer: TriangleLayerWriter, count: number): void {
@@ -386,6 +400,23 @@ function colorForTexture(textureName = "None"): RgbColor {
 
   const hue = (hash % 360) / 360;
   return hslToRgb(hue, 0.42, 0.68);
+}
+
+function renderModeForMaterial(
+  face: MeshFace,
+  materials: MeshMaterial[]
+): UnrealTriangleMaterialSpan["renderMode"] {
+  const flags = materials[face.materialIndex]?.polyFlags ?? 0;
+
+  if ((flags & POLY_FLAG_MASKED) !== 0) {
+    return "masked";
+  }
+
+  if ((flags & POLY_FLAG_TRANSLUCENT) !== 0) {
+    return "translucent";
+  }
+
+  return "opaque";
 }
 
 function hslToRgb(hue: number, saturation: number, lightness: number): RgbColor {
