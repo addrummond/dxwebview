@@ -428,19 +428,6 @@ export class ViewerScene {
     geometry.setAttribute("position", new THREE.BufferAttribute(geometrySource.positions, 3));
     geometry.computeVertexNormals();
 
-    const hiddenFill = new THREE.Mesh(
-      geometry.clone(),
-      new THREE.MeshBasicMaterial({
-        color: 0xffe45c,
-        depthTest: false,
-        depthWrite: false,
-        opacity: 0.08,
-        side: THREE.DoubleSide,
-        transparent: true
-      })
-    );
-    hiddenFill.renderOrder = 28;
-
     const hiddenWire = new THREE.Mesh(
       geometry.clone(),
       new THREE.MeshBasicMaterial({
@@ -480,7 +467,7 @@ export class ViewerScene {
     );
     visibleWire.renderOrder = 31;
 
-    group.add(hiddenFill, hiddenWire, visibleFill, visibleWire);
+    group.add(hiddenWire, visibleFill, visibleWire);
     return group;
   }
 
