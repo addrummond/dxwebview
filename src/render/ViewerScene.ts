@@ -92,7 +92,6 @@ export class ViewerScene {
   private readonly triangleA = new THREE.Vector3();
   private readonly triangleB = new THREE.Vector3();
   private readonly triangleC = new THREE.Vector3();
-  private readonly triangleCenter = new THREE.Vector3();
   private readonly triangleDirection = new THREE.Vector3();
   private actorMarkerTargets: THREE.Object3D[] = [];
   private occluderTargets: THREE.Object3D[] = [];
@@ -501,23 +500,10 @@ export class ViewerScene {
   private createSelectedBrushMesh(geometrySource: SceneBrushGeometry, actor: SceneActorAnnotation): THREE.Group {
     const group = new THREE.Group();
     group.name = `selected brush geometry: ${actor.objectName}`;
-    const split = this.splitBrushTrianglesByVisibility(geometrySource.positions, actor);
-
-    const hiddenWire = new THREE.Mesh(
-      this.createPositionGeometry(split.hidden),
-      new THREE.MeshBasicMaterial({
-        color: 0xffffff,
-        depthTest: false,
-        depthWrite: false,
-        opacity: 0.18,
-        transparent: true,
-        wireframe: true
-      })
-    );
-    hiddenWire.renderOrder = 29;
+    const geometry = this.createPositionGeometry(this.transformBrushPositions(geometrySource.positions, actor));
 
     const visibleFill = new THREE.Mesh(
-      this.createPositionGeometry(split.visible),
+      geometry.clone(),
       new THREE.MeshBasicMaterial({
         color: 0xffe45c,
         depthTest: true,
@@ -530,7 +516,7 @@ export class ViewerScene {
     visibleFill.renderOrder = 30;
 
     const visibleWire = new THREE.Mesh(
-      this.createPositionGeometry(split.visible),
+      geometry.clone(),
       new THREE.MeshBasicMaterial({
         color: 0xffffff,
         depthTest: true,
@@ -542,16 +528,25 @@ export class ViewerScene {
     );
     visibleWire.renderOrder = 31;
 
-    group.add(hiddenWire, visibleFill, visibleWire);
+    const overlayWire = new THREE.Mesh(
+      geometry,
+      new THREE.MeshBasicMaterial({
+        color: 0xffffff,
+        depthTest: false,
+        depthWrite: false,
+        opacity: 0.16,
+        transparent: true,
+        wireframe: true
+      })
+    );
+    overlayWire.renderOrder = 32;
+
+    group.add(visibleFill, visibleWire, overlayWire);
     return group;
   }
 
-  private splitBrushTrianglesByVisibility(
-    positions: TriangleBuffer,
-    actor: SceneActorAnnotation
-  ): { hidden: Float32Array; visible: Float32Array } {
-    const hidden: number[] = [];
-    const visible: number[] = [];
+  private transformBrushPositions(positions: TriangleBuffer, actor: SceneActorAnnotation): Float32Array {
+    const transformed: number[] = [];
 
     this.brushQuaternion.setFromEuler(unrealRotatorEuler(actor.rotation));
     this.brushMatrix.compose(
@@ -568,10 +563,8 @@ export class ViewerScene {
       this.triangleC
         .set(positions[index + 6], positions[index + 7], positions[index + 8])
         .applyMatrix4(this.brushMatrix);
-      this.triangleCenter.copy(this.triangleA).add(this.triangleB).add(this.triangleC).multiplyScalar(1 / 3);
 
-      const target = this.isPointOccluded(this.triangleCenter) ? hidden : visible;
-      target.push(
+      transformed.push(
         this.triangleA.x,
         this.triangleA.y,
         this.triangleA.z,
@@ -584,10 +577,7 @@ export class ViewerScene {
       );
     }
 
-    return {
-      hidden: new Float32Array(hidden),
-      visible: new Float32Array(visible)
-    };
+    return new Float32Array(transformed);
   }
 
   private isPointOccluded(center: THREE.Vector3): boolean {
