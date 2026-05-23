@@ -46,3 +46,14 @@ Click an actor marker in the viewport or an actor row in the inspector to select
 npm test
 npm run build
 ```
+
+## Deploy
+
+The GitHub Actions workflow in `.github/workflows/cloudflare-pages.yml` builds and deploys `dist` to Cloudflare Pages on pushes to `main` and on manual workflow dispatch.
+
+Configure these repository secrets:
+
+- `CLOUDFLARE_API_TOKEN`: Cloudflare API token with Pages write/edit access.
+- `CLOUDFLARE_ACCOUNT_ID`: Cloudflare account ID for the Pages project.
+
+By default, the workflow deploys to a Pages project named after the GitHub repository. To use a different project, set the repository variable `CLOUDFLARE_PAGES_PROJECT_NAME`.
