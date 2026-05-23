@@ -387,6 +387,7 @@ export class ViewerScene {
       const material = new THREE.MeshBasicMaterial({
         color: isSelected ? 0xfff06a : actorCategoryColor(annotation.category),
         depthTest: false,
+        depthWrite: false,
         opacity: isSelected ? 1 : 0.88,
         transparent: true
       });
@@ -403,6 +404,7 @@ export class ViewerScene {
         const haloMaterial = new THREE.MeshBasicMaterial({
           color: 0xffffff,
           depthTest: false,
+          depthWrite: false,
           opacity: 0.32,
           transparent: true,
           wireframe: true
@@ -432,7 +434,8 @@ export class ViewerScene {
       geometry.clone(),
       new THREE.MeshBasicMaterial({
         color: 0xffffff,
-        depthTest: false,
+        depthFunc: THREE.GreaterDepth,
+        depthTest: true,
         depthWrite: false,
         opacity: 0.18,
         transparent: true,
@@ -445,6 +448,7 @@ export class ViewerScene {
       geometry,
       new THREE.MeshBasicMaterial({
         color: 0xffe45c,
+        depthFunc: THREE.LessEqualDepth,
         depthTest: true,
         depthWrite: false,
         opacity: 0.42,
@@ -458,6 +462,7 @@ export class ViewerScene {
       geometry.clone(),
       new THREE.MeshBasicMaterial({
         color: 0xffffff,
+        depthFunc: THREE.LessEqualDepth,
         depthTest: true,
         depthWrite: false,
         opacity: 0.95,
