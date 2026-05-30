@@ -104,8 +104,10 @@ export async function readIndexedPackageSummary(
 ): Promise<IndexedPackageWithSummary> {
   const buffer = await entry.file.arrayBuffer();
   const tables = readPackageTables(buffer);
-  const geometry = readLargestModelGeometry(buffer, tables);
   const actorAnnotations = readActorAnnotations(buffer, tables);
+  const geometry = readLargestModelGeometry(buffer, tables, {
+    skyZoneLocations: actorAnnotations.filter((actor) => actor.className === "SkyZoneInfo").map((actor) => actor.location)
+  });
   const brushGeometries = readBrushActorGeometries(buffer, tables, actorAnnotations);
   const meshGeometries = await readMeshActorGeometries(entry, buffer, tables, actorAnnotations, index);
   const textures = geometry ? await loadGeometryTextures(entry, buffer, tables, geometry, index) : new Map();

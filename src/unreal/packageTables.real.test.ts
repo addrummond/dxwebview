@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import { readdir, readFile, stat } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
+import { readActorAnnotations } from "./actorAnnotations";
 import { readLargestModelGeometry } from "./modelPoints";
 import {
   packageKey,
@@ -17,6 +18,7 @@ const unatcoIslandPath = `${deusExRoot}/Maps/01_NYC_UNATCOIsland.dx`;
 const trainingPath = `${deusExRoot}/Maps/00_Training.dx`;
 const freeClinicPath = `${deusExRoot}/Maps/02_NYC_FreeClinic.dx`;
 const hongKongCanalPath = `${deusExRoot}/Maps/06_HongKong_WanChai_Canal.dx`;
+const versaLifePath = `${deusExRoot}/Maps/06_HongKong_VersaLife.dx`;
 const concreteTexturePath = `${deusExRoot}/Textures/CoreTexConcrete.utx`;
 
 describe("readPackageTables with Deus Ex GOTY data", () => {
@@ -72,6 +74,25 @@ describe("readPackageTables with Deus Ex GOTY data", () => {
     const geometry = readLargestModelGeometry(buffer, tables);
 
     expect(geometry?.triangleMaterialSpans.some((span) => span.renderMode === "masked")).toBe(true);
+  });
+
+  it.skipIf(!existsSync(versaLifePath))("moves SkyZoneInfo BSP components into backdrop geometry", async () => {
+    const file = await readFile(versaLifePath);
+    const buffer = file.buffer.slice(file.byteOffset, file.byteOffset + file.byteLength);
+    const tables = readPackageTables(buffer);
+    const skyZoneLocations = readActorAnnotations(buffer, tables)
+      .filter((actor) => actor.className === "SkyZoneInfo")
+      .map((actor) => actor.location);
+
+    expect(skyZoneLocations.length).toBeGreaterThan(0);
+
+    const literalGeometry = readLargestModelGeometry(buffer, tables);
+    const skyClassifiedGeometry = readLargestModelGeometry(buffer, tables, { skyZoneLocations });
+
+    expect(skyClassifiedGeometry?.triangles.length).toBeLessThan(literalGeometry?.triangles.length ?? 0);
+    expect(skyClassifiedGeometry?.backdropTriangles.length).toBeGreaterThan(
+      literalGeometry?.backdropTriangles.length ?? 0
+    );
   });
 
   it.skipIf(!existsSync(concreteTexturePath))("decodes real Deus Ex paletted textures", async () => {
