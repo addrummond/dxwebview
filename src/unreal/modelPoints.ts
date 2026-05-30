@@ -21,16 +21,6 @@ export interface UnrealModelGeometry {
   surfaceCount: number;
 }
 
-export interface UnrealModelGeometryOptions {
-  skyZoneLocations?: UnrealPoint[];
-}
-
-export interface UnrealPoint {
-  x: number;
-  y: number;
-  z: number;
-}
-
 export interface UnrealSurfaceMaterialUsage {
   textureName: string;
   triangleCount: number;
@@ -76,8 +66,7 @@ const POLY_FLAG_FAKE_BACKDROP = 0x00000080;
 
 export function readLargestModelGeometry(
   buffer: ArrayBuffer,
-  tables: UnrealPackageTables,
-  options: UnrealModelGeometryOptions = {}
+  tables: UnrealPackageTables
 ): UnrealModelGeometry | null {
   const model = tables.exports
     .map((entry) => ({ ...entry, className: resolveObjectName(entry.classIndex, tables) }))
@@ -89,14 +78,13 @@ export function readLargestModelGeometry(
     return null;
   }
 
-  return readModelGeometry(buffer, tables, model, options);
+  return readModelGeometry(buffer, tables, model);
 }
 
 export function readModelGeometryByName(
   buffer: ArrayBuffer,
   tables: UnrealPackageTables,
-  objectName: string,
-  options: UnrealModelGeometryOptions = {}
+  objectName: string
 ): UnrealModelGeometry | null {
   const model = tables.exports
     .map((entry) => ({ ...entry, className: resolveObjectName(entry.classIndex, tables) }))
@@ -108,14 +96,13 @@ export function readModelGeometryByName(
         entry.serialSize > 0
     );
 
-  return model ? readModelGeometry(buffer, tables, model, options) : null;
+  return model ? readModelGeometry(buffer, tables, model) : null;
 }
 
 function readModelGeometry(
   buffer: ArrayBuffer,
   tables: UnrealPackageTables,
-  model: ModelCandidate,
-  options: UnrealModelGeometryOptions
+  model: ModelCandidate
 ): UnrealModelGeometry | null {
   if (model.serialOffset === null) {
     return null;
@@ -136,7 +123,7 @@ function readModelGeometry(
   const nodes = readBspNodes(reader);
   const surfaces = readBspSurfaces(reader, tables);
   const verts = readBspVerts(reader);
-  const geometry = triangulateNodes(points, rawPoints, vectors, nodes, surfaces, verts, options);
+  const geometry = triangulateNodes(points, rawPoints, vectors, nodes, surfaces, verts);
 
   return {
     sourceExport: model.objectName,
@@ -258,8 +245,7 @@ function triangulateNodes(
   vectors: Float32Array,
   nodes: BspNode[],
   surfaces: BspSurface[],
-  verts: BspVert[],
-  options: UnrealModelGeometryOptions
+  verts: BspVert[]
 ): {
   backdrop: TriangleLayerBuffers;
   invisible: TriangleLayerBuffers;
@@ -301,7 +287,6 @@ function triangulateNodes(
       materialCounts.set(textureName, (materialCounts.get(textureName) ?? 0) + 1);
     }
   }
-  moveSkyZoneComponentsToBackdrop(solid, backdrop, options.skyZoneLocations ?? []);
 
   return {
     backdrop: finishTriangleLayer(backdrop),
@@ -340,179 +325,6 @@ function createTriangleLayerWriter(): TriangleLayerWriter {
     positions: [],
     uvs: []
   };
-}
-
-function moveSkyZoneComponentsToBackdrop(
-  solid: TriangleLayerWriter,
-  backdrop: TriangleLayerWriter,
-  skyZoneLocations: UnrealPoint[]
-): void {
-  if (skyZoneLocations.length === 0 || solid.positions.length === 0) {
-    return;
-  }
-
-  const skyboxTriangles = skyboxTriangleMask(solid.positions, skyZoneLocations);
-  if (!skyboxTriangles.some(Boolean)) {
-    return;
-  }
-
-  const source: TriangleLayerWriter = {
-    colors: solid.colors,
-    materialSpans: solid.materialSpans,
-    positions: solid.positions,
-    uvs: solid.uvs
-  };
-
-  solid.colors = [];
-  solid.materialSpans = [];
-  solid.positions = [];
-  solid.uvs = [];
-
-  for (const span of source.materialSpans) {
-    const startTriangle = span.start / 3;
-    const triangleCount = span.count / 3;
-
-    for (let index = 0; index < triangleCount; index += 1) {
-      const triangleIndex = startTriangle + index;
-      appendTriangle(skyboxTriangles[triangleIndex] ? backdrop : solid, source, triangleIndex, span);
-    }
-  }
-}
-
-function skyboxTriangleMask(positions: number[], skyZoneLocations: UnrealPoint[]): Uint8Array {
-  const triangleCount = positions.length / 9;
-  const vertexTriangles = new Map<string, number[]>();
-
-  for (let triangleIndex = 0; triangleIndex < triangleCount; triangleIndex += 1) {
-    for (let vertexIndex = 0; vertexIndex < 3; vertexIndex += 1) {
-      const source = triangleIndex * 9 + vertexIndex * 3;
-      const key = vertexKey(positions[source], positions[source + 1], positions[source + 2]);
-      const triangles = vertexTriangles.get(key);
-
-      if (triangles) {
-        triangles.push(triangleIndex);
-      } else {
-        vertexTriangles.set(key, [triangleIndex]);
-      }
-    }
-  }
-
-  const seen = new Uint8Array(triangleCount);
-  const skyboxTriangles = new Uint8Array(triangleCount);
-  const components: { bounds: Bounds; triangles: number[] }[] = [];
-
-  for (let start = 0; start < triangleCount; start += 1) {
-    if (seen[start]) {
-      continue;
-    }
-
-    components.push(connectedTriangleComponent(start, positions, vertexTriangles, seen));
-  }
-
-  for (const location of skyZoneLocations) {
-    const component = components
-      .filter((candidate) => boundsContains(candidate.bounds, location))
-      .sort((a, b) => a.triangles.length - b.triangles.length)[0];
-
-    if (component) {
-      for (const triangleIndex of component.triangles) {
-        skyboxTriangles[triangleIndex] = 1;
-      }
-    }
-  }
-
-  return skyboxTriangles;
-}
-
-function connectedTriangleComponent(
-  start: number,
-  positions: number[],
-  vertexTriangles: Map<string, number[]>,
-  seen: Uint8Array
-): { bounds: Bounds; triangles: number[] } {
-  const stack = [start];
-  const triangles: number[] = [];
-  const bounds = createBounds();
-
-  seen[start] = 1;
-  while (stack.length > 0) {
-    const triangleIndex = stack.pop()!;
-    triangles.push(triangleIndex);
-
-    for (let vertexIndex = 0; vertexIndex < 3; vertexIndex += 1) {
-      const source = triangleIndex * 9 + vertexIndex * 3;
-      const x = positions[source];
-      const y = positions[source + 1];
-      const z = positions[source + 2];
-      expandBounds(bounds, x, y, z);
-
-      for (const connectedTriangle of vertexTriangles.get(vertexKey(x, y, z)) ?? []) {
-        if (!seen[connectedTriangle]) {
-          seen[connectedTriangle] = 1;
-          stack.push(connectedTriangle);
-        }
-      }
-    }
-  }
-
-  return { bounds, triangles };
-}
-
-interface Bounds {
-  max: [number, number, number];
-  min: [number, number, number];
-}
-
-function createBounds(): Bounds {
-  return {
-    max: [Number.NEGATIVE_INFINITY, Number.NEGATIVE_INFINITY, Number.NEGATIVE_INFINITY],
-    min: [Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY]
-  };
-}
-
-function expandBounds(bounds: Bounds, x: number, y: number, z: number): void {
-  bounds.min[0] = Math.min(bounds.min[0], x);
-  bounds.min[1] = Math.min(bounds.min[1], y);
-  bounds.min[2] = Math.min(bounds.min[2], z);
-  bounds.max[0] = Math.max(bounds.max[0], x);
-  bounds.max[1] = Math.max(bounds.max[1], y);
-  bounds.max[2] = Math.max(bounds.max[2], z);
-}
-
-function boundsContains(bounds: Bounds, point: UnrealPoint): boolean {
-  return (
-    point.x >= bounds.min[0] &&
-    point.x <= bounds.max[0] &&
-    point.y >= bounds.min[1] &&
-    point.y <= bounds.max[1] &&
-    point.z >= bounds.min[2] &&
-    point.z <= bounds.max[2]
-  );
-}
-
-function appendTriangle(
-  target: TriangleLayerWriter,
-  source: TriangleLayerWriter,
-  triangleIndex: number,
-  span: UnrealTriangleMaterialSpan
-): void {
-  startMaterialSpan(target, span.textureName, span.renderMode);
-
-  const positionStart = triangleIndex * 9;
-  const uvStart = triangleIndex * 6;
-  for (let index = 0; index < 9; index += 1) {
-    target.positions.push(source.positions[positionStart + index]);
-    target.colors.push(source.colors[positionStart + index]);
-  }
-  for (let index = 0; index < 6; index += 1) {
-    target.uvs.push(source.uvs[uvStart + index]);
-  }
-
-  extendMaterialSpan(target, 3);
-}
-
-function vertexKey(x: number, y: number, z: number): string {
-  return `${Math.round(x * 1000)},${Math.round(y * 1000)},${Math.round(z * 1000)}`;
 }
 
 function finishTriangleLayer(layer: TriangleLayerWriter): TriangleLayerBuffers {
