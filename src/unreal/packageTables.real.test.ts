@@ -16,6 +16,7 @@ const deusExRoot = process.env.DEUS_EX_GOTY_PATH ?? "/Users/alex/deus_ex_goty_51
 const unatcoIslandPath = `${deusExRoot}/Maps/01_NYC_UNATCOIsland.dx`;
 const trainingPath = `${deusExRoot}/Maps/00_Training.dx`;
 const freeClinicPath = `${deusExRoot}/Maps/02_NYC_FreeClinic.dx`;
+const hotelPath = `${deusExRoot}/Maps/04_NYC_Hotel.dx`;
 const hongKongCanalPath = `${deusExRoot}/Maps/06_HongKong_WanChai_Canal.dx`;
 const concreteTexturePath = `${deusExRoot}/Textures/CoreTexConcrete.utx`;
 
@@ -131,6 +132,23 @@ describe("readPackageTables with Deus Ex GOTY data", () => {
       expect(doctor).toBeDefined();
       expect(loaded.meshGeometries.get(doctor!.path)?.sourceExport).toBe("GM_Trench");
       expect(loaded.meshGeometries.get(doctor!.path)?.positions.length).toBeGreaterThan(0);
+      expect(loaded.meshGeometries.get(doctor!.path)?.materials[0]?.textureName).not.toBe("None");
+    }
+  );
+
+  it.skipIf(!existsSync(hotelPath) || !existsSync(`${deusExRoot}/System/DeusEx.u`) || !existsSync(`${deusExRoot}/System/DeusExCharacters.u`))(
+    "loads actors whose tagged properties follow state data",
+    async () => {
+      const index = await buildRealPackageIndex(["04_NYC_Hotel.dx"], [], ["DeusEx.u", "DeusExCharacters.u"]);
+      const hotel = index.maps.find((entry) => entry.name === "04_NYC_Hotel.dx");
+
+      expect(hotel).toBeDefined();
+      const loaded = await readIndexedPackageSummary(hotel!, index);
+      const paul = loaded.actorAnnotations.find((actor) => actor.objectName === "PaulDenton0");
+
+      expect(paul).toBeDefined();
+      expect(loaded.meshGeometries.get(paul!.path)?.sourceExport).toBe("GM_Trench");
+      expect(loaded.meshGeometries.get(paul!.path)?.materials[0]?.textureName).not.toBe("None");
     }
   );
 });

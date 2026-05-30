@@ -138,10 +138,18 @@ function readTaggedProperties(
   entry: UnrealExportEntry
 ): Map<string, UnrealPropertyValue> {
   const startOffset = entry.serialOffset ?? 0;
-  const stateFrameOffset = readStateFramePropertyOffset(buffer, startOffset, startOffset + entry.serialSize);
+  const endOffset = startOffset + entry.serialSize;
+  const stateFrameOffset = readStateFramePropertyOffset(buffer, startOffset, endOffset);
   const offsets = stateFrameOffset === null ? [startOffset] : [stateFrameOffset, startOffset];
 
   for (const offset of offsets) {
+    const values = readTaggedPropertiesAtOffset(buffer, tables, entry, offset);
+    if (values.has("location")) {
+      return values;
+    }
+  }
+
+  for (let offset = startOffset + 1; offset < endOffset; offset += 1) {
     const values = readTaggedPropertiesAtOffset(buffer, tables, entry, offset);
     if (values.has("location")) {
       return values;

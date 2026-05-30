@@ -6,6 +6,11 @@ interface ClassCandidate extends UnrealExportEntry {
   className: string;
 }
 
+export interface UnrealClassDefaultVisuals {
+  meshPath: string | null;
+  skins: (string | null)[];
+}
+
 const PROPERTY_TYPE_OBJECT = 5;
 const PROPERTY_SIZE_BY_CODE = [1, 2, 4, 12, 16] as const;
 
@@ -14,6 +19,14 @@ export function readClassDefaultMeshPath(
   tables: UnrealPackageTables,
   className: string
 ): string | null {
+  return readClassDefaultVisuals(buffer, tables, className)?.meshPath ?? null;
+}
+
+export function readClassDefaultVisuals(
+  buffer: ArrayBuffer,
+  tables: UnrealPackageTables,
+  className: string
+): UnrealClassDefaultVisuals | null {
   const classExport = tables.exports
     .map((entry) => ({ ...entry, className: resolveObjectName(entry.classIndex, tables) }))
     .find(
@@ -30,43 +43,58 @@ export function readClassDefaultMeshPath(
 
   const endOffset = classExport.serialOffset + classExport.serialSize;
   for (let offset = classExport.serialOffset; offset < endOffset; offset += 1) {
-    const meshPath = readMeshPropertyAtOffset(buffer, tables, offset, endOffset);
-    if (meshPath) {
-      return meshPath;
+    const visuals = readVisualPropertiesAtOffset(buffer, tables, offset, endOffset);
+    if (visuals?.meshPath) {
+      return visuals;
     }
   }
 
   return null;
 }
 
-function readMeshPropertyAtOffset(
+function readVisualPropertiesAtOffset(
   buffer: ArrayBuffer,
   tables: UnrealPackageTables,
   offset: number,
   endOffset: number
-): string | null {
+): UnrealClassDefaultVisuals | null {
   const reader = new BinaryReader(buffer);
+  const visuals: UnrealClassDefaultVisuals = {
+    meshPath: null,
+    skins: []
+  };
+  let nextSkinIndex = 0;
 
   try {
     reader.seek(offset);
-    const nameIndex = reader.readCompactIndex();
-    if (tables.names[nameIndex]?.name !== "Mesh" || reader.offset >= endOffset) {
-      return null;
+
+    for (let count = 0; count < 64 && reader.offset < endOffset; count += 1) {
+      const nameIndex = reader.readCompactIndex();
+      const name = tables.names[nameIndex]?.name;
+      if (!name || name === "None" || reader.offset >= endOffset) {
+        break;
+      }
+
+      const info = reader.readUint8();
+      const type = info & 0x0f;
+      const size = readPropertySize(reader, (info >> 4) & 0x07);
+      const arrayIndex = (info & 0x80) !== 0 ? reader.readCompactIndex() : null;
+      const valueEnd = Math.min(endOffset, reader.offset + size);
+
+      if (type === PROPERTY_TYPE_OBJECT && name === "Mesh") {
+        const meshPath = resolveObjectPath(reader.readCompactIndex(), tables);
+        visuals.meshPath = meshPath !== "None" ? meshPath : null;
+      } else if (type === PROPERTY_TYPE_OBJECT && name === "MultiSkins") {
+        const skinPath = resolveObjectPath(reader.readCompactIndex(), tables);
+        const skinIndex = arrayIndex ?? nextSkinIndex;
+        visuals.skins[skinIndex] = skinPath !== "None" ? skinPath : null;
+        nextSkinIndex = Math.max(nextSkinIndex, skinIndex + 1);
+      }
+
+      reader.seek(valueEnd);
     }
 
-    const info = reader.readUint8();
-    if ((info & 0x0f) !== PROPERTY_TYPE_OBJECT) {
-      return null;
-    }
-
-    const size = readPropertySize(reader, (info >> 4) & 0x07);
-    if ((info & 0x80) !== 0) {
-      reader.readCompactIndex();
-    }
-
-    const valueEnd = Math.min(endOffset, reader.offset + size);
-    const meshPath = resolveObjectPath(reader.readCompactIndex(), tables);
-    return reader.offset <= valueEnd && meshPath !== "None" ? meshPath : null;
+    return visuals.meshPath ? visuals : null;
   } catch {
     return null;
   }

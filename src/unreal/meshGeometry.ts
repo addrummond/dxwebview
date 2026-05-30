@@ -12,6 +12,10 @@ export interface UnrealMeshGeometry {
   uvs: Float32Array;
 }
 
+export interface UnrealMeshGeometryOptions {
+  textureOverrides?: (string | null)[];
+}
+
 interface MeshCandidate extends UnrealExportEntry {
   className: string;
 }
@@ -60,7 +64,8 @@ export function readLodMeshGeometryByName(
   buffer: ArrayBuffer,
   tables: UnrealPackageTables,
   objectName: string,
-  packageName = ""
+  packageName = "",
+  options: UnrealMeshGeometryOptions = {}
 ): UnrealMeshGeometry | null {
   const mesh = tables.exports
     .map((entry) => ({ ...entry, className: resolveObjectName(entry.classIndex, tables) }))
@@ -72,14 +77,15 @@ export function readLodMeshGeometryByName(
         entry.serialSize > 0
     );
 
-  return mesh ? readLodMeshGeometry(buffer, tables, mesh, packageName) : null;
+  return mesh ? readLodMeshGeometry(buffer, tables, mesh, packageName, options) : null;
 }
 
 function readLodMeshGeometry(
   buffer: ArrayBuffer,
   tables: UnrealPackageTables,
   mesh: MeshCandidate,
-  packageName: string
+  packageName: string,
+  options: UnrealMeshGeometryOptions
 ): UnrealMeshGeometry | null {
   if (mesh.serialOffset === null) {
     return null;
@@ -121,7 +127,17 @@ function readLodMeshGeometry(
   reader.readUint32();
   const specialVerts = reader.readUint32();
 
-  const geometry = triangulateLodMesh(mesh.objectName, vertices, faces, wedges, materials, textures, frameVerts, specialVerts);
+  const geometry = triangulateLodMesh(
+    mesh.objectName,
+    vertices,
+    faces,
+    wedges,
+    materials,
+    textures,
+    options.textureOverrides ?? [],
+    frameVerts,
+    specialVerts
+  );
   return geometry.positions.length > 0 ? geometry : null;
 }
 
@@ -292,6 +308,7 @@ function triangulateLodMesh(
   wedges: MeshWedge[],
   materials: MeshMaterial[],
   textures: string[],
+  textureOverrides: (string | null)[],
   frameVerts: number,
   specialVerts: number
 ): UnrealMeshGeometry {
@@ -313,7 +330,7 @@ function triangulateLodMesh(
       continue;
     }
 
-    const textureName = textureNameForFace(face, materials, textures);
+    const textureName = textureNameForFace(face, materials, textures, textureOverrides);
     const color = colorForTexture(textureName);
     startMaterialSpan(writer, textureName, renderModeForMaterial(face, materials));
 
@@ -355,9 +372,14 @@ function createTriangleLayerWriter(): TriangleLayerWriter {
   };
 }
 
-function textureNameForFace(face: MeshFace, materials: MeshMaterial[], textures: string[]): string {
+function textureNameForFace(
+  face: MeshFace,
+  materials: MeshMaterial[],
+  textures: string[],
+  textureOverrides: (string | null)[]
+): string {
   const textureIndex = materials[face.materialIndex]?.textureIndex ?? -1;
-  return textures[textureIndex] ?? "None";
+  return textureOverrides[textureIndex] ?? textures[textureIndex] ?? "None";
 }
 
 function startMaterialSpan(

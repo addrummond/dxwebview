@@ -1,5 +1,5 @@
 import { readActorAnnotations, type UnrealActorAnnotation } from "./actorAnnotations";
-import { readClassDefaultMeshPath } from "./classDefaults";
+import { readClassDefaultVisuals, type UnrealClassDefaultVisuals } from "./classDefaults";
 import { readLodMeshGeometryByName, type UnrealMeshGeometry } from "./meshGeometry";
 import { readPackageTables, type UnrealPackageTables } from "./packageTables";
 import { readLargestModelGeometry, readModelGeometryByName, type UnrealModelGeometry } from "./modelPoints";
@@ -160,7 +160,7 @@ async function readMeshActorGeometries(
   const geometries = new Map<string, UnrealMeshGeometry>();
   const packageCache = new Map<string, Promise<{ buffer: ArrayBuffer; tables: UnrealPackageTables } | null>>();
   const meshCache = new Map<string, UnrealMeshGeometry | null>();
-  const classDefaultMeshCache = new Map<string, Promise<string | null>>();
+  const classDefaultVisualsCache = new Map<string, Promise<UnrealClassDefaultVisuals | null>>();
 
   for (const actor of actorAnnotations) {
     if (actor.brush) {
@@ -175,7 +175,7 @@ async function readMeshActorGeometries(
       index,
       packageCache,
       meshCache,
-      classDefaultMeshCache
+      classDefaultVisualsCache
     );
     if (geometry) {
       geometries.set(actor.path, geometry);
@@ -193,7 +193,7 @@ async function readMeshGeometryForActor(
   index: PackageIndex | undefined,
   packageCache: Map<string, Promise<{ buffer: ArrayBuffer; tables: UnrealPackageTables } | null>>,
   meshCache: Map<string, UnrealMeshGeometry | null>,
-  classDefaultMeshCache: Map<string, Promise<string | null>>
+  classDefaultVisualsCache: Map<string, Promise<UnrealClassDefaultVisuals | null>>
 ): Promise<UnrealMeshGeometry | null> {
   for (const reference of await meshReferencesForActor(
     actor,
@@ -202,15 +202,17 @@ async function readMeshGeometryForActor(
     mapTables,
     index,
     packageCache,
-    classDefaultMeshCache
+    classDefaultVisualsCache
   )) {
-    const key = `${reference.packageName.toLowerCase()}:${reference.meshName.toLowerCase()}`;
+    const key = `${reference.packageName.toLowerCase()}:${reference.meshName.toLowerCase()}:${reference.textureOverrides.join("|")}`;
     if (!meshCache.has(key)) {
       const meshPackage = await loadMeshPackage(reference.packageName, entry, mapBuffer, mapTables, index, packageCache);
       meshCache.set(
         key,
         meshPackage
-          ? readLodMeshGeometryByName(meshPackage.buffer, meshPackage.tables, reference.meshName, reference.packageName)
+          ? readLodMeshGeometryByName(meshPackage.buffer, meshPackage.tables, reference.meshName, reference.packageName, {
+              textureOverrides: reference.textureOverrides
+            })
           : null
       );
     }
@@ -231,43 +233,42 @@ async function meshReferencesForActor(
   mapTables: UnrealPackageTables,
   index: PackageIndex | undefined,
   packageCache: Map<string, Promise<{ buffer: ArrayBuffer; tables: UnrealPackageTables } | null>>,
-  classDefaultMeshCache: Map<string, Promise<string | null>>
-): Promise<{ meshName: string; packageName: string }[]> {
-  const references: { meshName: string; packageName: string }[] = [];
+  classDefaultVisualsCache: Map<string, Promise<UnrealClassDefaultVisuals | null>>
+): Promise<{ meshName: string; packageName: string; textureOverrides: (string | null)[] }[]> {
+  const references: { meshName: string; packageName: string; textureOverrides: (string | null)[] }[] = [];
   const explicitMesh = meshPathReference(actor.mesh);
   if (explicitMesh) {
-    references.push(explicitMesh);
+    references.push({ ...explicitMesh, textureOverrides: [] });
   }
 
   const classParts = actor.classPath.split(".").filter(Boolean);
   const classPackage = classParts.length > 1 ? classParts[0] : null;
   if (classPackage) {
-    const classDefaultMesh = meshPathReference(
-      await readClassDefaultMeshForActor(
-        actor,
-        classPackage,
-        entry,
-        mapBuffer,
-        mapTables,
-        index,
-        packageCache,
-        classDefaultMeshCache
-      )
+    const classDefaultVisuals = await readClassDefaultVisualsForActor(
+      actor,
+      classPackage,
+      entry,
+      mapBuffer,
+      mapTables,
+      index,
+      packageCache,
+      classDefaultVisualsCache
     );
+    const classDefaultMesh = meshPathReference(classDefaultVisuals?.meshPath ?? null);
     if (classDefaultMesh) {
-      references.push(classDefaultMesh);
+      references.push({ ...classDefaultMesh, textureOverrides: classDefaultVisuals?.skins ?? [] });
     }
-    references.push({ meshName: actor.className, packageName: classPackage });
+    references.push({ meshName: actor.className, packageName: classPackage, textureOverrides: [] });
   }
 
   for (const packageName of fallbackMeshPackageNames(actor)) {
-    references.push({ meshName: actor.className, packageName });
+    references.push({ meshName: actor.className, packageName, textureOverrides: [] });
   }
 
   return uniqueMeshReferences(references);
 }
 
-async function readClassDefaultMeshForActor(
+async function readClassDefaultVisualsForActor(
   actor: UnrealActorAnnotation,
   classPackage: string,
   entry: IndexedPackage,
@@ -275,21 +276,21 @@ async function readClassDefaultMeshForActor(
   mapTables: UnrealPackageTables,
   index: PackageIndex | undefined,
   packageCache: Map<string, Promise<{ buffer: ArrayBuffer; tables: UnrealPackageTables } | null>>,
-  classDefaultMeshCache: Map<string, Promise<string | null>>
-): Promise<string | null> {
+  classDefaultVisualsCache: Map<string, Promise<UnrealClassDefaultVisuals | null>>
+): Promise<UnrealClassDefaultVisuals | null> {
   const key = `${classPackage.toLowerCase()}:${actor.className.toLowerCase()}`;
-  if (!classDefaultMeshCache.has(key)) {
-    classDefaultMeshCache.set(
+  if (!classDefaultVisualsCache.has(key)) {
+    classDefaultVisualsCache.set(
       key,
       loadMeshPackage(classPackage, entry, mapBuffer, mapTables, index, packageCache).then((classPackageData) =>
         classPackageData
-          ? readClassDefaultMeshPath(classPackageData.buffer, classPackageData.tables, actor.className)
+          ? readClassDefaultVisuals(classPackageData.buffer, classPackageData.tables, actor.className)
           : null
       )
     );
   }
 
-  return classDefaultMeshCache.get(key) ?? null;
+  return classDefaultVisualsCache.get(key) ?? null;
 }
 
 function meshPathReference(meshPath: string | null): { meshName: string; packageName: string } | null {
@@ -320,13 +321,13 @@ function fallbackMeshPackageNames(actor: UnrealActorAnnotation): string[] {
 }
 
 function uniqueMeshReferences(
-  references: { meshName: string; packageName: string }[]
-): { meshName: string; packageName: string }[] {
+  references: { meshName: string; packageName: string; textureOverrides: (string | null)[] }[]
+): { meshName: string; packageName: string; textureOverrides: (string | null)[] }[] {
   const seen = new Set<string>();
-  const unique: { meshName: string; packageName: string }[] = [];
+  const unique: { meshName: string; packageName: string; textureOverrides: (string | null)[] }[] = [];
 
   for (const reference of references) {
-    const key = `${reference.packageName.toLowerCase()}:${reference.meshName.toLowerCase()}`;
+    const key = `${reference.packageName.toLowerCase()}:${reference.meshName.toLowerCase()}:${reference.textureOverrides.join("|")}`;
     if (seen.has(key)) {
       continue;
     }
