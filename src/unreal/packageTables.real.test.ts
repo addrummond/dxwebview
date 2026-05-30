@@ -117,6 +117,22 @@ describe("readPackageTables with Deus Ex GOTY data", () => {
       expect([...loaded.textures.keys()].some((key) => key.includes("couchleathertex1"))).toBe(true);
     }
   );
+
+  it.skipIf(!existsSync(freeClinicPath) || !existsSync(`${deusExRoot}/System/DeusEx.u`) || !existsSync(`${deusExRoot}/System/DeusExCharacters.u`))(
+    "loads live character meshes referenced by class defaults",
+    async () => {
+      const index = await buildRealPackageIndex(["02_NYC_FreeClinic.dx"], [], ["DeusEx.u", "DeusExCharacters.u"]);
+      const freeClinic = index.maps.find((entry) => entry.name === "02_NYC_FreeClinic.dx");
+
+      expect(freeClinic).toBeDefined();
+      const loaded = await readIndexedPackageSummary(freeClinic!, index);
+      const doctor = loaded.actorAnnotations.find((actor) => actor.objectName === "Doctor0");
+
+      expect(doctor).toBeDefined();
+      expect(loaded.meshGeometries.get(doctor!.path)?.sourceExport).toBe("GM_Trench");
+      expect(loaded.meshGeometries.get(doctor!.path)?.positions.length).toBeGreaterThan(0);
+    }
+  );
 });
 
 function totalTriangleCoordinates(geometry: ReturnType<typeof readLargestModelGeometry>): number {

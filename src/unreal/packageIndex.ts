@@ -1,4 +1,5 @@
 import { readActorAnnotations, type UnrealActorAnnotation } from "./actorAnnotations";
+import { readClassDefaultMeshPath } from "./classDefaults";
 import { readLodMeshGeometryByName, type UnrealMeshGeometry } from "./meshGeometry";
 import { readPackageTables, type UnrealPackageTables } from "./packageTables";
 import { readLargestModelGeometry, readModelGeometryByName, type UnrealModelGeometry } from "./modelPoints";
@@ -159,13 +160,23 @@ async function readMeshActorGeometries(
   const geometries = new Map<string, UnrealMeshGeometry>();
   const packageCache = new Map<string, Promise<{ buffer: ArrayBuffer; tables: UnrealPackageTables } | null>>();
   const meshCache = new Map<string, UnrealMeshGeometry | null>();
+  const classDefaultMeshCache = new Map<string, Promise<string | null>>();
 
   for (const actor of actorAnnotations) {
     if (actor.brush) {
       continue;
     }
 
-    const geometry = await readMeshGeometryForActor(actor, entry, mapBuffer, mapTables, index, packageCache, meshCache);
+    const geometry = await readMeshGeometryForActor(
+      actor,
+      entry,
+      mapBuffer,
+      mapTables,
+      index,
+      packageCache,
+      meshCache,
+      classDefaultMeshCache
+    );
     if (geometry) {
       geometries.set(actor.path, geometry);
     }
@@ -181,9 +192,18 @@ async function readMeshGeometryForActor(
   mapTables: UnrealPackageTables,
   index: PackageIndex | undefined,
   packageCache: Map<string, Promise<{ buffer: ArrayBuffer; tables: UnrealPackageTables } | null>>,
-  meshCache: Map<string, UnrealMeshGeometry | null>
+  meshCache: Map<string, UnrealMeshGeometry | null>,
+  classDefaultMeshCache: Map<string, Promise<string | null>>
 ): Promise<UnrealMeshGeometry | null> {
-  for (const reference of meshReferencesForActor(actor)) {
+  for (const reference of await meshReferencesForActor(
+    actor,
+    entry,
+    mapBuffer,
+    mapTables,
+    index,
+    packageCache,
+    classDefaultMeshCache
+  )) {
     const key = `${reference.packageName.toLowerCase()}:${reference.meshName.toLowerCase()}`;
     if (!meshCache.has(key)) {
       const meshPackage = await loadMeshPackage(reference.packageName, entry, mapBuffer, mapTables, index, packageCache);
@@ -204,7 +224,15 @@ async function readMeshGeometryForActor(
   return null;
 }
 
-function meshReferencesForActor(actor: UnrealActorAnnotation): { meshName: string; packageName: string }[] {
+async function meshReferencesForActor(
+  actor: UnrealActorAnnotation,
+  entry: IndexedPackage,
+  mapBuffer: ArrayBuffer,
+  mapTables: UnrealPackageTables,
+  index: PackageIndex | undefined,
+  packageCache: Map<string, Promise<{ buffer: ArrayBuffer; tables: UnrealPackageTables } | null>>,
+  classDefaultMeshCache: Map<string, Promise<string | null>>
+): Promise<{ meshName: string; packageName: string }[]> {
   const references: { meshName: string; packageName: string }[] = [];
   const explicitMesh = meshPathReference(actor.mesh);
   if (explicitMesh) {
@@ -214,6 +242,21 @@ function meshReferencesForActor(actor: UnrealActorAnnotation): { meshName: strin
   const classParts = actor.classPath.split(".").filter(Boolean);
   const classPackage = classParts.length > 1 ? classParts[0] : null;
   if (classPackage) {
+    const classDefaultMesh = meshPathReference(
+      await readClassDefaultMeshForActor(
+        actor,
+        classPackage,
+        entry,
+        mapBuffer,
+        mapTables,
+        index,
+        packageCache,
+        classDefaultMeshCache
+      )
+    );
+    if (classDefaultMesh) {
+      references.push(classDefaultMesh);
+    }
     references.push({ meshName: actor.className, packageName: classPackage });
   }
 
@@ -222,6 +265,31 @@ function meshReferencesForActor(actor: UnrealActorAnnotation): { meshName: strin
   }
 
   return uniqueMeshReferences(references);
+}
+
+async function readClassDefaultMeshForActor(
+  actor: UnrealActorAnnotation,
+  classPackage: string,
+  entry: IndexedPackage,
+  mapBuffer: ArrayBuffer,
+  mapTables: UnrealPackageTables,
+  index: PackageIndex | undefined,
+  packageCache: Map<string, Promise<{ buffer: ArrayBuffer; tables: UnrealPackageTables } | null>>,
+  classDefaultMeshCache: Map<string, Promise<string | null>>
+): Promise<string | null> {
+  const key = `${classPackage.toLowerCase()}:${actor.className.toLowerCase()}`;
+  if (!classDefaultMeshCache.has(key)) {
+    classDefaultMeshCache.set(
+      key,
+      loadMeshPackage(classPackage, entry, mapBuffer, mapTables, index, packageCache).then((classPackageData) =>
+        classPackageData
+          ? readClassDefaultMeshPath(classPackageData.buffer, classPackageData.tables, actor.className)
+          : null
+      )
+    );
+  }
+
+  return classDefaultMeshCache.get(key) ?? null;
 }
 
 function meshPathReference(meshPath: string | null): { meshName: string; packageName: string } | null {
