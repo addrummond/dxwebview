@@ -11,6 +11,11 @@ const MESH_BASIS_CORRECTION_QUATERNION = new THREE.Quaternion().setFromAxisAngle
   new THREE.Vector3(0, 1, 0),
   Math.PI
 );
+const WALL_MOUNTED_DEVICE_YAW_OFFSET_QUATERNION = new THREE.Quaternion().setFromAxisAngle(
+  new THREE.Vector3(0, 1, 0),
+  Math.PI / 2
+);
+const WALL_MOUNTED_DEVICE_MESHES = new Set(["ATM", "ComputerPublic", "ComputerSecurity", "Keypad1", "Keypad2"]);
 
 interface ActorCirclePickTarget {
   center: THREE.Vector3;
@@ -626,7 +631,7 @@ export class ViewerScene {
         {
           colors: geometrySource.geometry.colors,
           materialSpans: geometrySource.geometry.materialSpans,
-          positions: this.transformActorMeshPositions(geometrySource.geometry.positions, geometrySource.actor),
+          positions: this.transformActorMeshPositions(geometrySource.geometry, geometrySource.actor),
           textureCoordinateScale: 1 / 256,
           uvs: geometrySource.geometry.uvs
         },
@@ -728,13 +733,14 @@ export class ViewerScene {
     return new Float32Array(transformed);
   }
 
-  private transformActorMeshPositions(positions: TriangleBuffer, actor: SceneActorAnnotation): Float32Array {
+  private transformActorMeshPositions(geometry: UnrealMeshGeometry, actor: SceneActorAnnotation): Float32Array {
+    const positions = geometry.positions;
     const transformed: number[] = [];
     const drawScale3D = actor.drawScale3D ?? { x: 1, y: 1, z: 1 };
     const verticalCenterOffset =
       actor.category === "Character" ? actor.collisionHeight ?? meshVerticalCenter(positions) : 0;
 
-    this.brushQuaternion.copy(unrealMeshQuaternion(actor.rotation));
+    this.brushQuaternion.copy(unrealMeshQuaternion(actor.rotation, geometry.sourceExport));
     this.brushMatrix.compose(
       new THREE.Vector3(actor.location.x, actor.location.y, actor.location.z),
       this.brushQuaternion,
@@ -1207,10 +1213,16 @@ function unrealRotatorEuler(rotation: SceneActorAnnotation["rotation"]): THREE.E
   return euler.set(rotation.roll * unit, rotation.yaw * unit, rotation.pitch * unit, "YXZ");
 }
 
-export function unrealMeshQuaternion(rotation: SceneActorAnnotation["rotation"]): THREE.Quaternion {
-  return new THREE.Quaternion()
+export function unrealMeshQuaternion(rotation: SceneActorAnnotation["rotation"], meshSource?: string): THREE.Quaternion {
+  const quaternion = new THREE.Quaternion()
     .setFromEuler(unrealMeshRotatorEuler(rotation))
     .multiply(MESH_BASIS_CORRECTION_QUATERNION);
+
+  if (meshSource && WALL_MOUNTED_DEVICE_MESHES.has(meshSource)) {
+    quaternion.multiply(WALL_MOUNTED_DEVICE_YAW_OFFSET_QUATERNION);
+  }
+
+  return quaternion;
 }
 
 export function meshVerticalCenter(positions: TriangleBuffer): number {

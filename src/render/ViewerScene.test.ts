@@ -8,6 +8,11 @@ describe("unrealMeshQuaternion", () => {
     expectVector(meshForward({ pitch: 0, yaw: -16384, roll: 0 }), [-1, 0, 0]);
     expectVector(meshForward({ pitch: 0, yaw: -32768, roll: 0 }), [0, 0, 1]);
   });
+
+  it("turns wall-mounted device meshes so their shallow axis sits against the wall", () => {
+    expectVector(meshForward({ pitch: 0, yaw: -32768, roll: 0 }, "ComputerPublic"), [1, 0, 0]);
+    expectVector(meshForward({ pitch: 0, yaw: 32768, roll: 0 }, "ATM"), [1, 0, 0]);
+  });
 });
 
 describe("meshVerticalCenter", () => {
@@ -16,8 +21,8 @@ describe("meshVerticalCenter", () => {
   });
 });
 
-function meshForward(rotation: { pitch: number; roll: number; yaw: number }): THREE.Vector3 {
-  return new THREE.Vector3(0, 0, 1).applyQuaternion(unrealMeshQuaternion(rotation));
+function meshForward(rotation: { pitch: number; roll: number; yaw: number }, meshSource?: string): THREE.Vector3 {
+  return new THREE.Vector3(0, 0, 1).applyQuaternion(unrealMeshQuaternion(rotation, meshSource));
 }
 
 function expectVector(received: THREE.Vector3, expected: [number, number, number]): void {
