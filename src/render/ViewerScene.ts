@@ -731,6 +731,8 @@ export class ViewerScene {
   private transformActorMeshPositions(positions: TriangleBuffer, actor: SceneActorAnnotation): Float32Array {
     const transformed: number[] = [];
     const drawScale3D = actor.drawScale3D ?? { x: 1, y: 1, z: 1 };
+    const verticalCenterOffset =
+      actor.category === "Character" && actor.collisionHeight !== null ? actor.collisionHeight : 0;
 
     this.brushQuaternion.copy(unrealMeshQuaternion(actor.rotation));
     this.brushMatrix.compose(
@@ -743,7 +745,7 @@ export class ViewerScene {
       this.triangleA
         .set(
           positions[index] * actor.drawScale * drawScale3D.x,
-          positions[index + 1] * actor.drawScale * drawScale3D.y,
+          (positions[index + 1] - verticalCenterOffset) * actor.drawScale * drawScale3D.y,
           positions[index + 2] * actor.drawScale * drawScale3D.z
         )
         .applyMatrix4(this.brushMatrix);
