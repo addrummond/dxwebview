@@ -254,6 +254,7 @@ async function meshReferencesForActor(
       packageCache,
       classDefaultVisualsCache
     );
+    applyClassDefaultActorProperties(actor, classDefaultVisuals);
     const classDefaultMesh = meshPathReference(classDefaultVisuals?.meshPath ?? null);
     if (classDefaultMesh) {
       references.push({ ...classDefaultMesh, textureOverrides: classDefaultVisuals?.skins ?? [] });
@@ -266,6 +267,18 @@ async function meshReferencesForActor(
   }
 
   return uniqueMeshReferences(references);
+}
+
+function applyClassDefaultActorProperties(
+  actor: UnrealActorAnnotation,
+  classDefaultVisuals: UnrealClassDefaultVisuals | null
+): void {
+  if (!classDefaultVisuals) {
+    return;
+  }
+
+  actor.collisionHeight = actor.collisionHeight ?? classDefaultVisuals.collisionHeight;
+  actor.collisionRadius = actor.collisionRadius ?? classDefaultVisuals.collisionRadius;
 }
 
 async function readClassDefaultVisualsForActor(

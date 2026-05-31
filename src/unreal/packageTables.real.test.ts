@@ -15,6 +15,7 @@ import { readTextureImages } from "./textureDecoder";
 const deusExRoot = process.env.DEUS_EX_GOTY_PATH ?? "/Users/alex/deus_ex_goty_51757";
 const unatcoIslandPath = `${deusExRoot}/Maps/01_NYC_UNATCOIsland.dx`;
 const trainingPath = `${deusExRoot}/Maps/00_Training.dx`;
+const trainingCombatPath = `${deusExRoot}/Maps/00_TrainingCombat.dx`;
 const freeClinicPath = `${deusExRoot}/Maps/02_NYC_FreeClinic.dx`;
 const hotelPath = `${deusExRoot}/Maps/04_NYC_Hotel.dx`;
 const hongKongCanalPath = `${deusExRoot}/Maps/06_HongKong_WanChai_Canal.dx`;
@@ -149,6 +150,23 @@ describe("readPackageTables with Deus Ex GOTY data", () => {
       expect(paul).toBeDefined();
       expect(loaded.meshGeometries.get(paul!.path)?.sourceExport).toBe("GM_Trench");
       expect(loaded.meshGeometries.get(paul!.path)?.materials[0]?.textureName).not.toBe("None");
+    }
+  );
+
+  it.skipIf(!existsSync(trainingCombatPath) || !existsSync(`${deusExRoot}/System/DeusEx.u`) || !existsSync(`${deusExRoot}/System/DeusExCharacters.u`))(
+    "applies inherited class default collision sizes to mesh actors",
+    async () => {
+      const index = await buildRealPackageIndex(["00_TrainingCombat.dx"], [], ["DeusEx.u", "DeusExCharacters.u"]);
+      const trainingCombat = index.maps.find((entry) => entry.name === "00_TrainingCombat.dx");
+
+      expect(trainingCombat).toBeDefined();
+      const loaded = await readIndexedPackageSummary(trainingCombat!, index);
+      const securityBot = loaded.actorAnnotations.find((actor) => actor.objectName === "SecurityBot0");
+
+      expect(securityBot).toBeDefined();
+      expect(securityBot!.collisionHeight).toBeCloseTo(58.28, 2);
+      expect(securityBot!.collisionRadius).toBeCloseTo(62, 2);
+      expect(loaded.meshGeometries.get(securityBot!.path)?.sourceExport).toBe("SecurityBot2");
     }
   );
 });
