@@ -1,12 +1,18 @@
 import * as THREE from "three";
 import { describe, expect, it } from "vitest";
-import { unrealMeshQuaternion } from "./ViewerScene";
+import { meshVerticalCenter, unrealMeshQuaternion } from "./ViewerScene";
 
 describe("unrealMeshQuaternion", () => {
   it("keeps the decoded mesh basis correction separate from actor yaw", () => {
     expectVector(meshForward({ pitch: 0, yaw: 0, roll: 0 }), [0, 0, -1]);
     expectVector(meshForward({ pitch: 0, yaw: -16384, roll: 0 }), [-1, 0, 0]);
     expectVector(meshForward({ pitch: 0, yaw: -32768, roll: 0 }), [0, 0, 1]);
+  });
+});
+
+describe("meshVerticalCenter", () => {
+  it("uses the local mesh vertical midpoint", () => {
+    expect(meshVerticalCenter(new Float32Array([0, 0.25, 0, 1, 95.25, 1]))).toBeCloseTo(47.75, 6);
   });
 });
 

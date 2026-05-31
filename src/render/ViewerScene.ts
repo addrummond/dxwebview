@@ -732,7 +732,7 @@ export class ViewerScene {
     const transformed: number[] = [];
     const drawScale3D = actor.drawScale3D ?? { x: 1, y: 1, z: 1 };
     const verticalCenterOffset =
-      actor.category === "Character" && actor.collisionHeight !== null ? actor.collisionHeight : 0;
+      actor.category === "Character" ? actor.collisionHeight ?? meshVerticalCenter(positions) : 0;
 
     this.brushQuaternion.copy(unrealMeshQuaternion(actor.rotation));
     this.brushMatrix.compose(
@@ -1211,6 +1211,18 @@ export function unrealMeshQuaternion(rotation: SceneActorAnnotation["rotation"])
   return new THREE.Quaternion()
     .setFromEuler(unrealMeshRotatorEuler(rotation))
     .multiply(MESH_BASIS_CORRECTION_QUATERNION);
+}
+
+export function meshVerticalCenter(positions: TriangleBuffer): number {
+  let minY = Number.POSITIVE_INFINITY;
+  let maxY = Number.NEGATIVE_INFINITY;
+
+  for (let index = 1; index < positions.length; index += 3) {
+    minY = Math.min(minY, positions[index]);
+    maxY = Math.max(maxY, positions[index]);
+  }
+
+  return Number.isFinite(minY) && Number.isFinite(maxY) ? (minY + maxY) / 2 : 0;
 }
 
 function unrealMeshRotatorEuler(rotation: SceneActorAnnotation["rotation"]): THREE.Euler {
