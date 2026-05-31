@@ -22,6 +22,7 @@ export interface TriangleLayer {
   colors: TriangleBuffer;
   materialSpans: TriangleMaterialSpan[];
   positions: TriangleBuffer;
+  textureCoordinateScale?: number;
   uvs: TriangleBuffer;
 }
 
@@ -403,7 +404,7 @@ export class ViewerScene {
         materialIndexes.set(key, materialIndex);
         materials.push(
           texture
-            ? this.createTexturedMaterial(texture, opacity, span.renderMode)
+            ? this.createTexturedMaterial(texture, opacity, span.renderMode, layer.textureCoordinateScale)
             : this.createFallbackMaterial(color, opacityForRenderMode(opacity, span.renderMode), layer)
         );
       }
@@ -429,7 +430,8 @@ export class ViewerScene {
   private createTexturedMaterial(
     textureImage: UnrealTextureImage,
     opacity: number,
-    renderMode: TriangleMaterialSpan["renderMode"]
+    renderMode: TriangleMaterialSpan["renderMode"],
+    textureCoordinateScale: number | undefined
   ): THREE.MeshStandardMaterial {
     const texture = new THREE.DataTexture(
       rgbaForRenderMode(textureImage, renderMode),
@@ -443,7 +445,10 @@ export class ViewerScene {
     texture.minFilter = THREE.NearestFilter;
     texture.wrapS = THREE.RepeatWrapping;
     texture.wrapT = THREE.RepeatWrapping;
-    texture.repeat.set(1 / textureImage.width, 1 / textureImage.height);
+    texture.repeat.set(
+      textureCoordinateScale ?? 1 / textureImage.width,
+      textureCoordinateScale ?? 1 / textureImage.height
+    );
     texture.needsUpdate = true;
 
     return new THREE.MeshStandardMaterial({
@@ -622,6 +627,7 @@ export class ViewerScene {
           colors: geometrySource.geometry.colors,
           materialSpans: geometrySource.geometry.materialSpans,
           positions: this.transformActorMeshPositions(geometrySource.geometry.positions, geometrySource.actor),
+          textureCoordinateScale: 1 / 256,
           uvs: geometrySource.geometry.uvs
         },
         0xa9b0b8,
