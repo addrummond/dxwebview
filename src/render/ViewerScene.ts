@@ -1217,7 +1217,7 @@ export function unrealMeshQuaternion(
     .multiply(MESH_BASIS_CORRECTION_QUATERNION);
 
   if (rotOrigin) {
-    quaternion.multiply(new THREE.Quaternion().setFromEuler(unrealRotatorEuler(rotOrigin)));
+    quaternion.multiply(new THREE.Quaternion().setFromEuler(unrealMeshRotatorEuler(rotOrigin)));
   }
 
   return quaternion;

@@ -12,9 +12,9 @@ describe("unrealMeshQuaternion", () => {
   it("applies LodMesh RotOrigin after the decoded mesh basis correction", () => {
     const wallDeviceRotOrigin = { pitch: 0, yaw: 16384, roll: 0 };
 
-    expectVector(meshForward({ pitch: 0, yaw: -32768, roll: 0 }, wallDeviceRotOrigin), [1, 0, 0]);
-    expectVector(meshForward({ pitch: 0, yaw: 32768, roll: 0 }, wallDeviceRotOrigin), [1, 0, 0]);
-    expectVector(meshForward({ pitch: 0, yaw: -16384, roll: 0 }, wallDeviceRotOrigin), [0, 0, 1]);
+    expectVector(meshForward({ pitch: 0, yaw: -32768, roll: 0 }, wallDeviceRotOrigin), [-1, 0, 0]);
+    expectVector(meshForward({ pitch: 0, yaw: 32768, roll: 0 }, wallDeviceRotOrigin), [-1, 0, 0]);
+    expectVector(meshForward({ pitch: 0, yaw: -16384, roll: 0 }, wallDeviceRotOrigin), [0, 0, -1]);
   });
 });
 
