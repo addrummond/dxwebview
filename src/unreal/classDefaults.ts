@@ -127,10 +127,13 @@ function readVisualPropertiesAtOffset(
         const meshPath = resolveObjectPath(reader.readCompactIndex(), tables);
         visuals.meshPath = meshPath !== "None" ? meshPath : null;
       } else if (type === PROPERTY_TYPE_OBJECT && name === "MultiSkins") {
-        const skinPath = resolveObjectPath(reader.readCompactIndex(), tables);
-        const skinIndex = arrayIndex ?? nextSkinIndex;
-        visuals.skins[skinIndex] = skinPath !== "None" ? skinPath : null;
-        nextSkinIndex = Math.max(nextSkinIndex, skinIndex + 1);
+        const skinObjectIndex = reader.readCompactIndex();
+        if (isTextureObjectReference(skinObjectIndex, tables)) {
+          const skinPath = resolveObjectPath(skinObjectIndex, tables);
+          const skinIndex = arrayIndex ?? nextSkinIndex;
+          visuals.skins[skinIndex] = skinPath !== "None" ? skinPath : null;
+          nextSkinIndex = Math.max(nextSkinIndex, skinIndex + 1);
+        }
       } else if (type === PROPERTY_TYPE_FLOAT && size === 4 && name === "CollisionHeight") {
         visuals.collisionHeight = reader.readFloat32();
       } else if (type === PROPERTY_TYPE_FLOAT && size === 4 && name === "CollisionRadius") {
@@ -191,6 +194,18 @@ function hasClassDefaultVisuals(visuals: UnrealClassDefaultVisuals): boolean {
     visuals.meshPath !== null ||
     visuals.skins.some((skin) => skin !== undefined)
   );
+}
+
+function isTextureObjectReference(index: number, tables: UnrealPackageTables): boolean {
+  if (index === 0) {
+    return true;
+  }
+
+  if (index < 0) {
+    return tables.imports[-index - 1]?.className === "Texture";
+  }
+
+  return resolveObjectName(tables.exports[index - 1]?.classIndex ?? 0, tables) === "Texture";
 }
 
 function readPropertySize(reader: BinaryReader, sizeCode: number): number {

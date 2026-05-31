@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import { readdir, readFile, stat } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
+import { readClassDefaultVisuals } from "./classDefaults";
 import { readLargestModelGeometry } from "./modelPoints";
 import {
   packageKey,
@@ -20,6 +21,7 @@ const freeClinicPath = `${deusExRoot}/Maps/02_NYC_FreeClinic.dx`;
 const hotelPath = `${deusExRoot}/Maps/04_NYC_Hotel.dx`;
 const hongKongCanalPath = `${deusExRoot}/Maps/06_HongKong_WanChai_Canal.dx`;
 const concreteTexturePath = `${deusExRoot}/Textures/CoreTexConcrete.utx`;
+const deusExSystemPath = `${deusExRoot}/System/DeusEx.u`;
 
 describe("readPackageTables with Deus Ex GOTY data", () => {
   it.skipIf(!existsSync(unatcoIslandPath))("reads a real Deus Ex map package", async () => {
@@ -169,6 +171,19 @@ describe("readPackageTables with Deus Ex GOTY data", () => {
       expect(loaded.meshGeometries.get(securityBot!.path)?.sourceExport).toBe("SecurityBot2");
     }
   );
+
+  it.skipIf(!existsSync(deusExSystemPath))("ignores false-positive non-texture class default skins", async () => {
+    const file = await readFile(deusExSystemPath);
+    const buffer = file.buffer.slice(file.byteOffset, file.byteOffset + file.byteLength);
+    const tables = readPackageTables(buffer);
+
+    const earth = readClassDefaultVisuals(buffer, tables, "Earth");
+    const doctor = readClassDefaultVisuals(buffer, tables, "Doctor");
+
+    expect(earth?.meshPath).toBe("DeusExDeco.Earth");
+    expect(earth?.skins).not.toContain("ColorTheme");
+    expect(doctor?.skins.some((skin) => skin?.includes("DoctorTex"))).toBe(true);
+  });
 });
 
 function totalTriangleCoordinates(geometry: ReturnType<typeof readLargestModelGeometry>): number {
