@@ -7,7 +7,10 @@ export interface UnrealMeshGeometry {
   colors: Float32Array;
   materialSpans: UnrealTriangleMaterialSpan[];
   materials: UnrealSurfaceMaterialUsage[];
+  origin: UnrealMeshVector;
   positions: Float32Array;
+  rotOrigin: UnrealMeshRotator;
+  scale: UnrealMeshVector;
   sourceExport: string;
   uvs: Float32Array;
 }
@@ -31,6 +34,18 @@ interface MeshMaterial {
 }
 
 interface MeshVertex {
+  x: number;
+  y: number;
+  z: number;
+}
+
+export interface UnrealMeshRotator {
+  pitch: number;
+  roll: number;
+  yaw: number;
+}
+
+export interface UnrealMeshVector {
   x: number;
   y: number;
   z: number;
@@ -112,7 +127,9 @@ function readLodMeshGeometry(
   reader.readUint32();
   reader.readUint32();
   reader.readUint32();
-  reader.skip(12 + 12 + 12);
+  const scale = readMeshVector(reader);
+  const origin = readMeshVector(reader);
+  const rotOrigin = readMeshRotator(reader);
   reader.readUint32();
   reader.readUint32();
   skipTextureLods(reader, tables);
@@ -135,6 +152,9 @@ function readLodMeshGeometry(
     materials,
     textures,
     options.textureOverrides ?? [],
+    scale,
+    origin,
+    rotOrigin,
     frameVerts,
     specialVerts
   );
@@ -177,6 +197,22 @@ function decodeDeusExMeshVertex(reader: BinaryReader): MeshVertex {
     x: -x,
     y: z,
     z: -y
+  };
+}
+
+function readMeshVector(reader: BinaryReader): UnrealMeshVector {
+  return {
+    x: reader.readFloat32(),
+    y: reader.readFloat32(),
+    z: reader.readFloat32()
+  };
+}
+
+function readMeshRotator(reader: BinaryReader): UnrealMeshRotator {
+  return {
+    pitch: reader.readInt32(),
+    yaw: reader.readInt32(),
+    roll: reader.readInt32()
   };
 }
 
@@ -309,6 +345,9 @@ function triangulateLodMesh(
   materials: MeshMaterial[],
   textures: string[],
   textureOverrides: (string | null)[],
+  scale: UnrealMeshVector,
+  origin: UnrealMeshVector,
+  rotOrigin: UnrealMeshRotator,
   frameVerts: number,
   specialVerts: number
 ): UnrealMeshGeometry {
@@ -357,7 +396,10 @@ function triangulateLodMesh(
     materials: [...materialCounts]
       .map(([textureName, triangleCount]) => ({ textureName, triangleCount }))
       .sort((a, b) => b.triangleCount - a.triangleCount || a.textureName.localeCompare(b.textureName)),
+    origin,
     positions: new Float32Array(writer.positions),
+    rotOrigin,
+    scale,
     sourceExport,
     uvs: new Float32Array(writer.uvs)
   };

@@ -11,18 +11,6 @@ const MESH_BASIS_CORRECTION_QUATERNION = new THREE.Quaternion().setFromAxisAngle
   new THREE.Vector3(0, 1, 0),
   Math.PI
 );
-const WALL_MOUNTED_DEVICE_YAW_OFFSET_QUATERNION = new THREE.Quaternion().setFromAxisAngle(
-  new THREE.Vector3(0, 1, 0),
-  Math.PI / 2
-);
-const WALL_MOUNTED_DEVICE_MESHES = new Set([
-  "ATM",
-  "CigaretteMachine",
-  "ComputerPublic",
-  "ComputerSecurity",
-  "Keypad1",
-  "Keypad2"
-]);
 
 interface ActorCirclePickTarget {
   center: THREE.Vector3;
@@ -747,7 +735,7 @@ export class ViewerScene {
     const verticalCenterOffset =
       actor.category === "Character" ? actor.collisionHeight ?? meshVerticalCenter(positions) : 0;
 
-    this.brushQuaternion.copy(unrealMeshQuaternion(actor.rotation, geometry.sourceExport));
+    this.brushQuaternion.copy(unrealMeshQuaternion(actor.rotation, geometry.rotOrigin));
     this.brushMatrix.compose(
       new THREE.Vector3(actor.location.x, actor.location.y, actor.location.z),
       this.brushQuaternion,
@@ -1220,13 +1208,16 @@ function unrealRotatorEuler(rotation: SceneActorAnnotation["rotation"]): THREE.E
   return euler.set(rotation.roll * unit, rotation.yaw * unit, rotation.pitch * unit, "YXZ");
 }
 
-export function unrealMeshQuaternion(rotation: SceneActorAnnotation["rotation"], meshSource?: string): THREE.Quaternion {
+export function unrealMeshQuaternion(
+  rotation: SceneActorAnnotation["rotation"],
+  rotOrigin?: UnrealMeshGeometry["rotOrigin"]
+): THREE.Quaternion {
   const quaternion = new THREE.Quaternion()
     .setFromEuler(unrealMeshRotatorEuler(rotation))
     .multiply(MESH_BASIS_CORRECTION_QUATERNION);
 
-  if (meshSource && WALL_MOUNTED_DEVICE_MESHES.has(meshSource)) {
-    quaternion.multiply(WALL_MOUNTED_DEVICE_YAW_OFFSET_QUATERNION);
+  if (rotOrigin) {
+    quaternion.multiply(new THREE.Quaternion().setFromEuler(unrealRotatorEuler(rotOrigin)));
   }
 
   return quaternion;

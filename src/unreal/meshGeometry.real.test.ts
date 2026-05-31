@@ -19,6 +19,19 @@ describe("readLodMeshGeometryByName", () => {
     expect(geometry?.materials.some((material) => material.textureName.includes("CouchLeatherTex1"))).toBe(true);
   });
 
+  it.skipIf(!existsSync(decoPath))("reads LodMesh transform metadata", async () => {
+    const file = await readFile(decoPath);
+    const buffer = file.buffer.slice(file.byteOffset, file.byteOffset + file.byteLength);
+    const tables = readPackageTables(buffer);
+    const couch = readLodMeshGeometryByName(buffer, tables, "CouchLeather");
+    const cigaretteMachine = readLodMeshGeometryByName(buffer, tables, "CigaretteMachine");
+
+    expect(couch?.rotOrigin).toEqual({ pitch: 0, yaw: 0, roll: 0 });
+    expect(cigaretteMachine?.rotOrigin).toEqual({ pitch: 0, yaw: 16384, roll: 0 });
+    expect(cigaretteMachine?.scale.x).toBeCloseTo(1 / 256, 8);
+    expect(cigaretteMachine?.origin).toEqual({ x: 0, y: 0, z: 0 });
+  });
+
   it.skipIf(!existsSync(decoPath))("marks masked LodMesh materials", async () => {
     const file = await readFile(decoPath);
     const buffer = file.buffer.slice(file.byteOffset, file.byteOffset + file.byteLength);
