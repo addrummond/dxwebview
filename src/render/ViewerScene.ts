@@ -50,6 +50,7 @@ export interface SceneActorAnnotation {
   category: string;
   collisionHeight: number | null;
   className: string;
+  classPath: string;
   collisionRadius: number | null;
   drawScale: number;
   drawScale3D: {
@@ -745,7 +746,7 @@ export class ViewerScene {
     const positions = geometry.positions;
     const transformed: number[] = [];
     const drawScale3D = actor.drawScale3D ?? { x: 1, y: 1, z: 1 };
-    const verticalCenterOffset = actor.collisionHeight ?? meshVerticalCenter(positions);
+    const verticalCenterOffset = actorMeshVerticalOffset(positions, actor);
 
     this.brushQuaternion.copy(unrealMeshQuaternion(actor.rotation, geometry.rotOrigin));
     this.brushMatrix.compose(
@@ -1245,6 +1246,29 @@ export function meshVerticalCenter(positions: TriangleBuffer): number {
   }
 
   return Number.isFinite(minY) && Number.isFinite(maxY) ? (minY + maxY) / 2 : 0;
+}
+
+export function actorMeshVerticalOffset(positions: TriangleBuffer, actor: SceneActorAnnotation): number {
+  if (actor.collisionHeight !== null && usesCollisionHeightMeshOrigin(actor)) {
+    return actor.collisionHeight;
+  }
+
+  return meshVerticalCenter(positions);
+}
+
+function usesCollisionHeightMeshOrigin(actor: SceneActorAnnotation): boolean {
+  const classPackage = actor.classPath.split(".")[0]?.toLowerCase() ?? "";
+  const key = `${actor.className} ${actor.objectName}`.toLowerCase();
+
+  if (classPackage === "deusexdeco" || classPackage === "deusexitems") {
+    return false;
+  }
+
+  return (
+    actor.category === "Character" ||
+    classPackage === "deusex" ||
+    ["bot", "robot", "drone"].some((needle) => key.includes(needle))
+  );
 }
 
 function unrealMeshRotatorEuler(rotation: SceneActorAnnotation["rotation"]): THREE.Euler {
