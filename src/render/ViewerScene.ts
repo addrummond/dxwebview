@@ -6,6 +6,7 @@ import type { UnrealTextureImage } from "../unreal/textureDecoder";
 type TriangleBuffer = Float32Array<ArrayBufferLike>;
 const MOVEMENT_RAMP_SECONDS = 1;
 const VIEW_CHANGE_MIN_INTERVAL_MS = 500;
+const WORLD_TEXTURE_EMISSIVE_INTENSITY = 0.35;
 // LodMesh vertices are decoded into a viewer-space basis with X/Z flipped relative to map actors.
 const MESH_BASIS_CORRECTION_QUATERNION = new THREE.Quaternion().setFromAxisAngle(
   new THREE.Vector3(0, 1, 0),
@@ -199,21 +200,21 @@ export class ViewerScene {
     const frameTargets: THREE.Object3D[] = [];
 
     if (visibility.solid && layers.solid.positions.length > 0) {
-      const mesh = this.createTriangleMesh(layers.solid, 0x9fc3cf, 1, textures);
+      const mesh = this.createTriangleMesh(layers.solid, 0x9fc3cf, 1, textures, WORLD_TEXTURE_EMISSIVE_INTENSITY);
       const wire = this.createWireMesh(layers.solid.positions, 0x263238);
       this.content.add(mesh, wire);
       frameTargets.push(mesh);
     }
 
     if (visibility.backdrop && layers.backdrop.positions.length > 0) {
-      const backdrop = this.createTriangleMesh(layers.backdrop, 0x3d5363, 0.18, textures);
+      const backdrop = this.createTriangleMesh(layers.backdrop, 0x3d5363, 0.18, textures, WORLD_TEXTURE_EMISSIVE_INTENSITY);
       const backdropWire = this.createWireMesh(layers.backdrop.positions, 0x4e6c7c);
       this.content.add(backdrop, backdropWire);
       frameTargets.push(backdrop);
     }
 
     if (visibility.invisible && layers.invisible.positions.length > 0) {
-      const invisible = this.createTriangleMesh(layers.invisible, 0xc4926a, 0.24, textures);
+      const invisible = this.createTriangleMesh(layers.invisible, 0xc4926a, 0.24, textures, WORLD_TEXTURE_EMISSIVE_INTENSITY);
       const invisibleWire = this.createWireMesh(layers.invisible.positions, 0x8c6247);
       this.content.add(invisible, invisibleWire);
       frameTargets.push(invisible);
@@ -360,7 +361,8 @@ export class ViewerScene {
     layer: TriangleLayer,
     color: number,
     opacity: number,
-    textures: Map<string, UnrealTextureImage>
+    textures: Map<string, UnrealTextureImage>,
+    textureEmissiveIntensity = 0
   ): THREE.Mesh {
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute("position", new THREE.BufferAttribute(layer.positions, 3));
@@ -373,7 +375,7 @@ export class ViewerScene {
     geometry.computeVertexNormals();
     geometry.computeBoundingSphere();
 
-    const material = this.createMaterials(geometry, layer, color, opacity, textures);
+    const material = this.createMaterials(geometry, layer, color, opacity, textures, textureEmissiveIntensity);
 
     return new THREE.Mesh(geometry, material);
   }
@@ -383,7 +385,8 @@ export class ViewerScene {
     layer: TriangleLayer,
     color: number,
     opacity: number,
-    textures: Map<string, UnrealTextureImage>
+    textures: Map<string, UnrealTextureImage>,
+    textureEmissiveIntensity: number
   ): THREE.Material | THREE.Material[] {
     if (layer.materialSpans.length === 0) {
       return this.createFallbackMaterial(color, opacity, layer);
@@ -404,7 +407,13 @@ export class ViewerScene {
         materialIndexes.set(key, materialIndex);
         materials.push(
           texture
-            ? this.createTexturedMaterial(texture, opacity, span.renderMode, layer.textureCoordinateScale)
+            ? this.createTexturedMaterial(
+                texture,
+                opacity,
+                span.renderMode,
+                layer.textureCoordinateScale,
+                textureEmissiveIntensity
+              )
             : this.createFallbackMaterial(color, opacityForRenderMode(opacity, span.renderMode), layer)
         );
       }
@@ -431,7 +440,8 @@ export class ViewerScene {
     textureImage: UnrealTextureImage,
     opacity: number,
     renderMode: TriangleMaterialSpan["renderMode"],
-    textureCoordinateScale: number | undefined
+    textureCoordinateScale: number | undefined,
+    emissiveIntensity: number
   ): THREE.MeshStandardMaterial {
     const texture = new THREE.DataTexture(
       rgbaForRenderMode(textureImage, renderMode),
@@ -453,6 +463,9 @@ export class ViewerScene {
 
     return new THREE.MeshStandardMaterial({
       alphaTest: renderMode === "masked" ? 0.5 : 0,
+      emissive: 0xffffff,
+      emissiveIntensity,
+      emissiveMap: emissiveIntensity > 0 ? texture : null,
       map: texture,
       metalness: 0,
       opacity: opacityForRenderMode(opacity, renderMode),
@@ -582,10 +595,10 @@ export class ViewerScene {
     );
 
     if (solid.positions.length > 0) {
-      group.add(this.createTriangleMesh(solid, 0x6aa7a0, 1, textures));
+      group.add(this.createTriangleMesh(solid, 0x6aa7a0, 1, textures, WORLD_TEXTURE_EMISSIVE_INTENSITY));
     }
     if (backdrop.positions.length > 0) {
-      group.add(this.createTriangleMesh(backdrop, 0x3d5363, 0.28, textures));
+      group.add(this.createTriangleMesh(backdrop, 0x3d5363, 0.28, textures, WORLD_TEXTURE_EMISSIVE_INTENSITY));
     }
     if (invisible.positions.length > 0) {
       group.add(this.createWireMesh(invisible.positions, 0x8fd1cc));
