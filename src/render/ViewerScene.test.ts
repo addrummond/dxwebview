@@ -12,6 +12,7 @@ describe("unrealMeshQuaternion", () => {
   it("turns wall-mounted device meshes so their shallow axis sits against the wall", () => {
     expectVector(meshForward({ pitch: 0, yaw: -32768, roll: 0 }, "ComputerPublic"), [1, 0, 0]);
     expectVector(meshForward({ pitch: 0, yaw: 32768, roll: 0 }, "ATM"), [1, 0, 0]);
+    expectVector(meshForward({ pitch: 0, yaw: -16384, roll: 0 }, "CigaretteMachine"), [0, 0, 1]);
   });
 });
 

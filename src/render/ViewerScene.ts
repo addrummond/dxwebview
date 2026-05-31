@@ -15,7 +15,14 @@ const WALL_MOUNTED_DEVICE_YAW_OFFSET_QUATERNION = new THREE.Quaternion().setFrom
   new THREE.Vector3(0, 1, 0),
   Math.PI / 2
 );
-const WALL_MOUNTED_DEVICE_MESHES = new Set(["ATM", "ComputerPublic", "ComputerSecurity", "Keypad1", "Keypad2"]);
+const WALL_MOUNTED_DEVICE_MESHES = new Set([
+  "ATM",
+  "CigaretteMachine",
+  "ComputerPublic",
+  "ComputerSecurity",
+  "Keypad1",
+  "Keypad2"
+]);
 
 interface ActorCirclePickTarget {
   center: THREE.Vector3;
