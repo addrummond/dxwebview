@@ -64,6 +64,7 @@ const POLY_FLAG_MASKED = 0x00000002;
 const POLY_FLAG_TRANSLUCENT = 0x00000004;
 const POLY_FLAG_ENVIRONMENT = 0x00000010;
 const POLY_FLAG_FAKE_BACKDROP = 0x00000080;
+const POLY_FLAG_MIRRORED = 0x08000000;
 
 export function readLargestModelGeometry(
   buffer: ArrayBuffer,
@@ -443,7 +444,7 @@ export function renderModeForPolyFlags(flags: number): UnrealSurfaceRenderMode {
     return "masked";
   }
 
-  if ((flags & POLY_FLAG_ENVIRONMENT) !== 0) {
+  if ((flags & (POLY_FLAG_ENVIRONMENT | POLY_FLAG_MIRRORED)) !== 0) {
     return "opaque";
   }
 
