@@ -1260,13 +1260,17 @@ function usesCollisionHeightMeshOrigin(actor: SceneActorAnnotation): boolean {
   const classPackage = actor.classPath.split(".")[0]?.toLowerCase() ?? "";
   const key = `${actor.className} ${actor.objectName}`.toLowerCase();
 
-  if (classPackage === "deusexdeco" || classPackage === "deusexitems") {
+  if (
+    actor.category === "Decoration" ||
+    classPackage === "deusexdeco" ||
+    classPackage === "deusexitems" ||
+    ["chair", "couch", "seat", "sofa", "table"].some((needle) => key.includes(needle))
+  ) {
     return false;
   }
 
   return (
     actor.category === "Character" ||
-    classPackage === "deusex" ||
     ["bot", "robot", "drone"].some((needle) => key.includes(needle))
   );
 }

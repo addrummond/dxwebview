@@ -32,7 +32,7 @@ describe("actorMeshVerticalOffset", () => {
       actorMeshVerticalOffset(
         positions,
         testActor({
-          category: "Other",
+          category: "Character",
           className: "PaulDenton",
           classPath: "DeusEx.PaulDenton",
           collisionHeight: 39
@@ -49,6 +49,20 @@ describe("actorMeshVerticalOffset", () => {
           category: "Other",
           className: "CouchLeather",
           classPath: "DeusExDeco.CouchLeather",
+          collisionHeight: 32
+        })
+      )
+    ).toBe(10);
+  });
+
+  it("keeps furniture subclasses from DeusEx.u aligned to their mesh bounds", () => {
+    expect(
+      actorMeshVerticalOffset(
+        positions,
+        testActor({
+          category: "Other",
+          className: "CouchLeather",
+          classPath: "DeusEx.CouchLeather",
           collisionHeight: 32
         })
       )
