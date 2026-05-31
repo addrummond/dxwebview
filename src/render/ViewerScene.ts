@@ -732,8 +732,7 @@ export class ViewerScene {
     const positions = geometry.positions;
     const transformed: number[] = [];
     const drawScale3D = actor.drawScale3D ?? { x: 1, y: 1, z: 1 };
-    const verticalCenterOffset =
-      actor.category === "Character" ? actor.collisionHeight ?? meshVerticalCenter(positions) : 0;
+    const verticalCenterOffset = meshVerticalCenter(positions);
 
     this.brushQuaternion.copy(unrealMeshQuaternion(actor.rotation, geometry.rotOrigin));
     this.brushMatrix.compose(
