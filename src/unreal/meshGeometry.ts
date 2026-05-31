@@ -1,7 +1,7 @@
 import { BinaryReader } from "./binaryReader";
 import { resolveObjectName, resolveObjectPath } from "./objectReferences";
 import type { UnrealExportEntry, UnrealPackageTables } from "./packageTables";
-import type { UnrealSurfaceMaterialUsage, UnrealTriangleMaterialSpan } from "./modelPoints";
+import { renderModeForPolyFlags, type UnrealSurfaceMaterialUsage, type UnrealTriangleMaterialSpan } from "./modelPoints";
 
 export interface UnrealMeshGeometry {
   colors: Float32Array;
@@ -72,9 +72,6 @@ interface RgbColor {
 
 const BOUNDING_BOX_BYTES = 25;
 const BOUNDING_SPHERE_BYTES = 16;
-const POLY_FLAG_MASKED = 0x00000002;
-const POLY_FLAG_TRANSLUCENT = 0x00000004;
-
 export function readLodMeshGeometryByName(
   buffer: ArrayBuffer,
   tables: UnrealPackageTables,
@@ -470,17 +467,7 @@ function renderModeForMaterial(
   face: MeshFace,
   materials: MeshMaterial[]
 ): UnrealTriangleMaterialSpan["renderMode"] {
-  const flags = materials[face.materialIndex]?.polyFlags ?? 0;
-
-  if ((flags & POLY_FLAG_MASKED) !== 0) {
-    return "masked";
-  }
-
-  if ((flags & POLY_FLAG_TRANSLUCENT) !== 0) {
-    return "translucent";
-  }
-
-  return "opaque";
+  return renderModeForPolyFlags(materials[face.materialIndex]?.polyFlags ?? 0);
 }
 
 function hslToRgb(hue: number, saturation: number, lightness: number): RgbColor {

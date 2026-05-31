@@ -62,6 +62,7 @@ interface BspVert {
 const POLY_FLAG_INVISIBLE = 0x00000001;
 const POLY_FLAG_MASKED = 0x00000002;
 const POLY_FLAG_TRANSLUCENT = 0x00000004;
+const POLY_FLAG_ENVIRONMENT = 0x00000010;
 const POLY_FLAG_FAKE_BACKDROP = 0x00000080;
 
 export function readLargestModelGeometry(
@@ -434,10 +435,16 @@ function hasVector(values: Float32Array, index: number): boolean {
 }
 
 function renderModeForSurface(surface: BspSurface | undefined): UnrealSurfaceRenderMode {
-  const flags = surface?.polyFlags ?? 0;
+  return renderModeForPolyFlags(surface?.polyFlags ?? 0);
+}
 
+export function renderModeForPolyFlags(flags: number): UnrealSurfaceRenderMode {
   if ((flags & POLY_FLAG_MASKED) !== 0) {
     return "masked";
+  }
+
+  if ((flags & POLY_FLAG_ENVIRONMENT) !== 0) {
+    return "opaque";
   }
 
   if ((flags & POLY_FLAG_TRANSLUCENT) !== 0) {
